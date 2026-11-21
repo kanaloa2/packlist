@@ -75,3 +75,58 @@ describe('packing list', () => {
     expect(entry.quantity).toBe(3);
   });
 });
+
+describe('per-trip counts', () => {
+  async function setup(countRule: 'trip' | 'perDay' | 'perActivity', days = 5) {
+    const end = `2027-03-${String(9 + days).padStart(2, '0')}`;
+    const trip = await repo.createTrip({ name: 'T', startDate: '2027-03-10', endDate: end });
+    const d = await repo.createDestination(trip.id, { name: 'D' });
+    const p = await repo.createPlace(d.id, { name: 'P', type: 'Other' });
+    const a1 = await repo.createActivity(p.id, { name: 'A1', start: '2027-03-10T10:00', end: '2027-03-10T11:00' });
+    const a2 = await repo.createActivity(p.id, { name: 'A2', start: '2027-03-11T10:00', end: '2027-03-11T11:00' });
+    const socks = await repo.createItem({ name: 'Socks', category: 'Clothing', countRule });
+    await repo.addItemToActivity(a1.id, socks.id, 2);
+    await repo.addItemToActivity(a2.id, socks.id, 1);
+    const data = await load(trip.id);
+    return { trip, socks, data: { ...data, trip } };
+  }
+
+  it('one per day scales with trip length', async () => {
+    const { data } = await setup('perDay', 6);
+    const [e] = buildPackingList(data);
+    expect(e.quantity).toBe(12); // 2 per day (largest activity quantity) × 6 days
+    expect(e.reason).toBe('2 per day × 6 days');
+    expect(e.manual).toBe(false);
+  });
+
+  it('one per activity adds up activity quantities', async () => {
+    const { data } = await setup('perActivity');
+    expect(buildPackingList(data)[0].quantity).toBe(3);
+  });
+
+  it('whole-trip items use the largest single-activity quantity', async () => {
+    const { data } = await setup('trip');
+    expect(buildPackingList(data)[0].quantity).toBe(2);
+  });
+
+  it('a manual count overrides the automatic one for that trip only', async () => {
+    const { trip, socks } = await setup('perDay', 5);
+    const other = await setup('perDay', 3);
+    await repo.setPackQuantity(trip.id, socks.id, 4);
+    const [e] = buildPackingList({ ...(await load(trip.id)), trip });
+    expect(e).toMatchObject({ quantity: 4, autoQuantity: 10, manual: true });
+    // The same item on another trip keeps its own automatic count.
+    expect(buildPackingList({ ...(await load(other.trip.id)), trip: other.trip })[0].quantity).toBe(6);
+    // Ticking it packed keeps the manual count, and resetting goes back to automatic.
+    await repo.setPacked(trip.id, socks.id, true);
+    expect(buildPackingList({ ...(await load(trip.id)), trip })[0]).toMatchObject({ quantity: 4, packed: true });
+    await repo.setPackQuantity(trip.id, socks.id, null);
+    expect(buildPackingList({ ...(await load(trip.id)), trip })[0]).toMatchObject({ quantity: 10, manual: false, packed: true });
+  });
+
+  it('items created before count rules existed behave as whole-trip', async () => {
+    const { data, socks } = await setup('trip');
+    const legacy = data.items.map((i) => (i.id === socks.id ? { ...i, countRule: undefined } : i));
+    expect(buildPackingList({ ...data, items: legacy })[0].quantity).toBe(2);
+  });
+});

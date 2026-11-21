@@ -4,7 +4,9 @@ import type {
   ActivityItem,
   Destination,
   Item,
+  CountRule,
   ItemCategory,
+  PackStatus,
   Place,
   PlaceType,
   Trip,
@@ -322,6 +324,7 @@ export async function deleteActivity(id: string): Promise<void> {
 
 export interface ItemInput extends Common {
   category: ItemCategory;
+  countRule?: CountRule;
 }
 
 export async function createItem(input: ItemInput): Promise<Item> {
@@ -332,6 +335,7 @@ export async function createItem(input: ItemInput): Promise<Item> {
     description: input.description ?? '',
     photo: input.photo,
     category: input.category,
+    countRule: input.countRule ?? 'trip',
     ...stamp(),
   };
   await db.items.add(item);
@@ -345,6 +349,7 @@ export async function updateItem(id: string, input: ItemInput): Promise<void> {
     description: input.description ?? '',
     photo: input.photo,
     category: input.category,
+    countRule: input.countRule ?? 'trip',
     updatedAt: Date.now(),
   });
 }
@@ -411,10 +416,31 @@ export async function copyActivityItems(fromActivityId: string, toActivityId: st
 
 // ---------- Packing ----------
 
+// Pack status rows hold both the packed tick and any manual count, so every write
+// merges into the existing row instead of replacing it.
+
+async function patchPackStatus(tripId: string, itemIds: string[], patch: Partial<PackStatus>): Promise<void> {
+  await db.transaction('rw', db.packStatus, async () => {
+    const ids = itemIds.map((itemId) => `${tripId}:${itemId}`);
+    const existing = await db.packStatus.bulkGet(ids);
+    await db.packStatus.bulkPut(
+      itemIds.map((itemId, i) => ({
+        ...(existing[i] ?? { id: ids[i], tripId, itemId, packed: false }),
+        ...patch,
+      })),
+    );
+  });
+}
+
 export async function setPacked(tripId: string, itemId: string, packed: boolean): Promise<void> {
-  await db.packStatus.put({ id: `${tripId}:${itemId}`, tripId, itemId, packed });
+  await patchPackStatus(tripId, [itemId], { packed });
 }
 
 export async function setAllPacked(tripId: string, itemIds: string[], packed: boolean): Promise<void> {
-  await db.packStatus.bulkPut(itemIds.map((itemId) => ({ id: `${tripId}:${itemId}`, tripId, itemId, packed })));
+  await patchPackStatus(tripId, itemIds, { packed });
+}
+
+/** Sets how many of an item to pack on this trip; null goes back to the automatic count. */
+export async function setPackQuantity(tripId: string, itemId: string, quantity: number | null): Promise<void> {
+  await patchPackStatus(tripId, [itemId], { quantity: quantity === null ? null : Math.max(1, Math.floor(quantity)) });
 }

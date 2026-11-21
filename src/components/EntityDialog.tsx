@@ -7,7 +7,16 @@ export type FieldDef =
   | { key: string; label: string; type: 'text'; required?: boolean; placeholder?: string; autoFocus?: boolean }
   | { key: string; label: string; type: 'textarea'; placeholder?: string }
   | { key: string; label: string; type: 'date' | 'datetime'; required?: boolean; min?: string; max?: string; hint?: string }
-  | { key: string; label: string; type: 'select'; options: readonly string[]; icons?: Record<string, string> }
+  | {
+      key: string;
+      label: string;
+      type: 'select';
+      options: readonly string[];
+      icons?: Record<string, string>;
+      /** Display text per option value (defaults to the value itself). */
+      labels?: Record<string, string>;
+      hint?: string;
+    }
   | { key: string; label: string; type: 'photo' };
 
 export type Values = Record<string, string | undefined>;
@@ -111,10 +120,11 @@ function EntityForm({
                     {f.options.map((o) => (
                       <option key={o} value={o}>
                         {f.icons?.[o] ? `${f.icons[o]}  ` : ''}
-                        {o}
+                        {f.labels?.[o] ?? o}
                       </option>
                     ))}
                   </select>
+                  {f.hint && <p className="hint">{f.hint}</p>}
                   {fieldError(f.key)}
                 </div>
               );

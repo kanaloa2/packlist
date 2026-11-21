@@ -100,3 +100,13 @@ describe('repo', () => {
     expect(await db.items.count()).toBe(1); // items are shared, not copied
   });
 });
+
+describe('count rule defaults', () => {
+  it('suggests one-per-day for socks and underwear', async () => {
+    const { defaultCountRule } = await import('../components/forms');
+    expect(defaultCountRule('Socks', 'Clothing')).toBe('perDay');
+    expect(defaultCountRule('Underwear', 'Clothing')).toBe('perDay');
+    expect(defaultCountRule('Navy blazer', 'Clothing')).toBe('trip');
+    expect(defaultCountRule('Daily vitamins', 'Medications')).toBe('perDay');
+  });
+});

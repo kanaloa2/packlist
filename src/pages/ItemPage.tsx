@@ -7,7 +7,7 @@ import { ItemDialog } from '../components/forms';
 import { Breadcrumbs, Hero, NotFound, SectionHeader } from '../components/ui';
 import { deleteItem } from '../lib/repo';
 import { formatActivityTime } from '../lib/dates';
-import { CATEGORY_ICONS, type Activity, type Item, type Place, type Trip } from '../types';
+import { CATEGORY_ICONS, COUNT_RULE_LABELS, type Activity, type Item, type Place, type Trip } from '../types';
 
 interface Usage {
   activity: Activity;
@@ -53,6 +53,7 @@ export function ItemPage() {
         icon={CATEGORY_ICONS[item.category]}
         kicker={item.category}
         title={item.name}
+        subtitle={`Packing count: ${COUNT_RULE_LABELS[item.countRule ?? 'trip'].toLowerCase()}`}
         description={item.description}
         actions={
           <>

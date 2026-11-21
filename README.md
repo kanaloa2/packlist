@@ -20,7 +20,11 @@ Trip (start & end dates)
   - Group it by **category**, by the **day** an item is first needed, or by **destination**.
   - Check items off as you pack, hide packed items, mark everything packed at once, share or copy the list as text, or print it.
   - Tap an item to see which activities need it.
-  - Items are things you own, so reusing your black jeans on three activities still means packing one pair. The list uses the largest quantity any single activity needs.
+  - **How many to pack.** Each item has a counting setting:
+    - **Same for the whole trip** (default): your black jeans on three activities is still one pair. It uses the largest quantity any single activity asks for.
+    - **One per day of the trip**: for socks and underwear. A 6-day trip packs 6, a 3-day trip packs 3. New items named like socks, underwear or t-shirts get this setting automatically.
+    - **One per activity**: adds up the quantities across activities.
+  - **Change the count for one trip.** Tap an item on the packing list and use **Pack for this trip** to set your own number, for example 4 pairs of socks instead of 6. It only affects that trip, survives ticking the item as packed, and **Use automatic** puts it back.
 - **Schedule** view shows the trip day by day.
 - **Duplicate** a trip to reuse its whole itinerary on new dates. **Copy items** from one activity to another.
 - Activity times are validated against the trip's dates. A trip's dates can't be changed in a way that would leave activities outside the trip.

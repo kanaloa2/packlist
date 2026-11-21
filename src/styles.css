@@ -1423,3 +1423,26 @@ input[type='password'] {
     animation: none;
   }
 }
+
+/* ---------- Per-trip counts ---------- */
+
+.qty-manual {
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 0 0.3rem;
+}
+.count-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  padding: 0.5rem 0 0.6rem;
+  margin-bottom: 0.4rem;
+  border-bottom: 1px dashed var(--border);
+}
+.count-reason {
+  flex-basis: 100%;
+}
+.count-reason .link-btn {
+  font-size: inherit;
+}

@@ -1,6 +1,6 @@
-import type { Activity, ActivityItem, Destination, Item, PackStatus, Place } from '../types';
+import type { Activity, ActivityItem, CountRule, Destination, Item, PackStatus, Place, Trip } from '../types';
 import { ITEM_CATEGORIES } from '../types';
-import { datePart, formatDayHeading } from './dates';
+import { datePart, dayCount, formatDayHeading } from './dates';
 
 export interface ItemUsage {
   activity: Activity;
@@ -12,11 +12,14 @@ export interface ItemUsage {
 
 export interface PackingEntry {
   item: Item;
-  /**
-   * How many to pack. An Item is one specific thing (your black jeans), so reusing it across
-   * activities doesn't multiply it — we pack the largest quantity any single activity needs.
-   */
+  /** How many to pack on this trip: the manual count if one is set, otherwise `autoQuantity`. */
   quantity: number;
+  /** The count worked out from the item's count rule (see CountRule). */
+  autoQuantity: number;
+  /** True when the count was set by hand for this trip. */
+  manual: boolean;
+  /** Plain-English explanation of autoQuantity, e.g. "1 per day × 5 days". */
+  reason: string;
   usages: ItemUsage[];
   /** Earliest activity start that needs this item. */
   firstNeeded: string;
@@ -32,6 +35,8 @@ export interface PackingGroup {
 export type GroupBy = 'category' | 'destination' | 'day';
 
 export interface PackingInput {
+  /** Needed for "one per day" items; without it they fall back to the whole-trip count. */
+  trip?: Pick<Trip, 'startDate' | 'endDate'>;
   destinations: Destination[];
   places: Place[];
   activities: Activity[];
@@ -45,7 +50,7 @@ export function buildPackingList(input: PackingInput): PackingEntry[] {
   const actsById = new Map(input.activities.map((a) => [a.id, a]));
   const placesById = new Map(input.places.map((p) => [p.id, p]));
   const destsById = new Map(input.destinations.map((d) => [d.id, d]));
-  const packed = new Map(input.packStatus.map((s) => [s.itemId, s.packed]));
+  const status = new Map(input.packStatus.map((s) => [s.itemId, s]));
 
   const entries = new Map<string, PackingEntry>();
   for (const link of input.activityItems) {
@@ -62,22 +67,48 @@ export function buildPackingList(input: PackingInput): PackingEntry[] {
     const entry = entries.get(item.id);
     if (entry) {
       entry.usages.push(usage);
-      entry.quantity = Math.max(entry.quantity, link.quantity);
       if (activity.start < entry.firstNeeded) entry.firstNeeded = activity.start;
     } else {
+      const s = status.get(item.id);
       entries.set(item.id, {
         item,
-        quantity: link.quantity,
+        quantity: 0,
+        autoQuantity: 0,
+        manual: false,
+        reason: '',
         usages: [usage],
         firstNeeded: activity.start,
-        packed: packed.get(item.id) ?? false,
+        packed: s?.packed ?? false,
       });
     }
   }
+  const days = input.trip ? dayCount(input.trip.startDate, input.trip.endDate) : 0;
   for (const e of entries.values()) {
     e.usages.sort((a, b) => a.activity.start.localeCompare(b.activity.start));
+    const { count, reason } = autoCount(e.item.countRule ?? 'trip', e.usages, days);
+    e.autoQuantity = count;
+    e.reason = reason;
+    const manual = status.get(e.item.id)?.quantity;
+    e.manual = typeof manual === 'number' && manual >= 1;
+    e.quantity = e.manual ? manual! : count;
   }
   return [...entries.values()].sort(byName);
+}
+
+function autoCount(rule: CountRule, usages: ItemUsage[], days: number): { count: number; reason: string } {
+  const most = Math.max(...usages.map((u) => u.quantity));
+  const n = usages.length;
+  if (rule === 'perActivity') {
+    const total = usages.reduce((sum, u) => sum + u.quantity, 0);
+    return { count: total, reason: `${n === 1 ? 'Needed by 1 activity' : `Total across ${n} activities`}` };
+  }
+  if (rule === 'perDay' && days > 0) {
+    return { count: most * days, reason: `${most} per day × ${days} day${days === 1 ? '' : 's'}` };
+  }
+  return {
+    count: most,
+    reason: n === 1 ? 'Needed by 1 activity' : `Most needed by any one of ${n} activities (reused, not multiplied)`,
+  };
 }
 
 function byName(a: PackingEntry, b: PackingEntry) {

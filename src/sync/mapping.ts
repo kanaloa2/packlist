@@ -17,9 +17,9 @@ export const COLUMNS: Record<TableName, readonly string[]> = {
   destinations: ['id', 'tripId', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   places: ['id', 'tripId', 'destinationId', 'type', 'address', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   activities: ['id', 'tripId', 'destinationId', 'placeId', 'name', 'description', 'photo', 'start', 'end', 'createdAt', 'updatedAt'],
-  items: ['id', 'category', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
+  items: ['id', 'category', 'countRule', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   activityItems: ['id', 'tripId', 'activityId', 'itemId', 'quantity', 'note', 'createdAt'],
-  packStatus: ['id', 'tripId', 'itemId', 'packed'],
+  packStatus: ['id', 'tripId', 'itemId', 'packed', 'quantity'],
 };
 
 export const HAS_PHOTO: Record<TableName, boolean> = {
@@ -44,11 +44,14 @@ type Row = Record<string, unknown>;
 export function toRemote(table: TableName, row: Row): Row {
   const out: Row = {};
   for (const k of COLUMNS[table]) {
-    const v = row[k];
+    const v = row[k] ?? DEFAULTS[k];
     out[toSnake(k)] = v === undefined ? null : v;
   }
   return out;
 }
+
+/** Values for NOT NULL columns that older local rows may not have. */
+const DEFAULTS: Record<string, unknown> = { countRule: 'trip' };
 
 /** Postgres row → local row. */
 export function fromRemote(table: TableName, row: Row): Row {

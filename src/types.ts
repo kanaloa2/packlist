@@ -67,8 +67,25 @@ export const ITEM_CATEGORIES = [
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
 /** An Item lives in a shared library so it can be selected on any Activity of any Trip. */
+export const COUNT_RULES = ['trip', 'perDay', 'perActivity'] as const;
+/**
+ * How many of an item a trip's packing list asks for, before any manual change:
+ * - trip: the most any single activity needs (an item is one thing you own; reuse doesn't multiply it)
+ * - perDay: that many for every day of the trip (socks, underwear)
+ * - perActivity: the total across all activities that use it
+ */
+export type CountRule = (typeof COUNT_RULES)[number];
+
+export const COUNT_RULE_LABELS: Record<CountRule, string> = {
+  trip: 'Same for the whole trip',
+  perDay: 'One per day of the trip',
+  perActivity: 'One per activity',
+};
+
 export interface Item extends BaseEntity {
   category: ItemCategory;
+  /** Missing on items created before this existed; treated as 'trip'. */
+  countRule?: CountRule;
 }
 
 /** Links an Item to an Activity. */
@@ -88,6 +105,8 @@ export interface PackStatus {
   tripId: string;
   itemId: string;
   packed: boolean;
+  /** Manual count for this trip; undefined/null = use the automatic count. */
+  quantity?: number | null;
 }
 
 export const PLACE_ICONS: Record<PlaceType, string> = {

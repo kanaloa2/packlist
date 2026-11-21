@@ -9,7 +9,7 @@ import {
   type GroupBy,
   type PackingEntry,
 } from '../lib/packing';
-import { setAllPacked, setPacked } from '../lib/repo';
+import { setAllPacked, setPackQuantity, setPacked } from '../lib/repo';
 import { formatActivityTime } from '../lib/dates';
 import { CATEGORY_ICONS } from '../types';
 import { Empty, ProgressBar, Thumb } from './ui';
@@ -174,7 +174,7 @@ function PackingRow({
   expanded: boolean;
   onToggleExpand: () => void;
 }) {
-  const { item, quantity, usages, packed } = entry;
+  const { item, quantity, autoQuantity, manual, reason, usages, packed } = entry;
   const uses = [...new Set(usages.map((u) => u.activity.name))];
   return (
     <li className={`packing-item${packed ? ' packed' : ''}`}>
@@ -188,7 +188,11 @@ function PackingRow({
         <button className="packing-info" onClick={onToggleExpand} aria-expanded={expanded}>
           <span className="packing-name">
             {item.name}
-            {quantity > 1 && <span className="qty">×{quantity}</span>}
+            {(quantity > 1 || manual) && (
+              <span className={`qty${manual ? ' qty-manual' : ''}`} title={manual ? 'Count set by you for this trip' : reason}>
+                ×{quantity}
+              </span>
+            )}
           </span>
           <span className="muted small">
             {showCategory && `${item.category} · `}
@@ -198,6 +202,34 @@ function PackingRow({
       </div>
       {expanded && (
         <div className="packing-detail">
+          <div className="count-control">
+            <span className="label small">Pack for this trip</span>
+            <div className="stepper" aria-label={`How many ${item.name} to pack`}>
+              <button
+                aria-label="Pack fewer"
+                disabled={quantity <= 1}
+                onClick={() => setCount(tripId, item.id, quantity - 1, autoQuantity)}
+              >
+                −
+              </button>
+              <span>{quantity}</span>
+              <button aria-label="Pack more" onClick={() => setCount(tripId, item.id, quantity + 1, autoQuantity)}>
+                +
+              </button>
+            </div>
+            <span className="muted small count-reason">
+              {manual ? (
+                <>
+                  Set by you for this trip.{' '}
+                  <button className="link-btn" onClick={() => setPackQuantity(tripId, item.id, null)}>
+                    Use automatic ({autoQuantity})
+                  </button>
+                </>
+              ) : (
+                `Automatic: ${reason}`
+              )}
+            </span>
+          </div>
           {item.description && <p className="description">{item.description}</p>}
           <ul className="usage-list">
             {usages.map((u, i) => (
@@ -219,4 +251,9 @@ function PackingRow({
       )}
     </li>
   );
+}
+
+/** Stepping back to the automatic count clears the manual one, so it keeps following the trip. */
+function setCount(tripId: string, itemId: string, next: number, auto: number) {
+  return setPackQuantity(tripId, itemId, next === auto ? null : next);
 }

@@ -1,7 +1,13 @@
 import { EntityDialog, type FieldDef, type Values } from './EntityDialog';
 import * as repo from '../lib/repo';
+import { defaultCountRule } from '../lib/counts';
+
+export { defaultCountRule };
 import { formatDate, shiftYmd, todayYmd } from '../lib/dates';
 import {
+  COUNT_RULES,
+  COUNT_RULE_LABELS,
+  type CountRule,
   CATEGORY_ICONS,
   ITEM_CATEGORIES,
   PLACE_ICONS,
@@ -203,12 +209,29 @@ export function ItemDialog({
       fields={[
         { key: 'name', label: 'Item', type: 'text', required: true, placeholder: 'Black blazer', autoFocus: true },
         { key: 'category', label: 'Category', type: 'select', options: ITEM_CATEGORIES, icons: CATEGORY_ICONS },
+        {
+          key: 'countRule',
+          label: 'How many to pack',
+          type: 'select',
+          options: COUNT_RULES,
+          labels: COUNT_RULE_LABELS,
+          hint: 'Use “one per day” for socks and underwear: a 6-day trip packs 6. You can still change the count for any single trip on its packing list.',
+        },
         { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Color, size, brand…' },
         { key: 'photo', label: 'Photo', type: 'photo' },
       ]}
-      initial={existing ? { ...existing } : { name: defaultName, description: '', category: defaultCategory }}
+      initial={
+        existing
+          ? { ...existing, countRule: existing.countRule ?? 'trip' }
+          : { name: defaultName, description: '', category: defaultCategory, countRule: defaultCountRule(defaultName, defaultCategory) }
+      }
+      onValuesChange={existing ? undefined : suggestCountRule}
       onSubmit={async (v) => {
-        const input = { ...common(v), category: (v.category ?? 'Other') as ItemCategory };
+        const input = {
+          ...common(v),
+          category: (v.category ?? 'Other') as ItemCategory,
+          countRule: (v.countRule ?? 'trip') as CountRule,
+        };
         if (existing) {
           await repo.updateItem(existing.id, input);
           onSaved?.(existing.id);
@@ -219,4 +242,16 @@ export function ItemDialog({
       }}
     />
   );
+}
+
+const ruleFor = (v: Values) => defaultCountRule(v.name ?? '', (v.category ?? 'Other') as ItemCategory);
+
+/**
+ * While creating an item, keep the count rule in step with its name and category ("Socks" →
+ * one per day) — but only until the user picks a rule themselves.
+ */
+function suggestCountRule(next: Values, prev: Values): Values {
+  const userChangedRule = next.countRule !== prev.countRule;
+  const ruleWasSuggested = prev.countRule === ruleFor(prev);
+  return !userChangedRule && ruleWasSuggested ? { ...next, countRule: ruleFor(next) } : next;
 }

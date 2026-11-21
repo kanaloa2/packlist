@@ -1,5 +1,6 @@
 import * as repo from './repo';
 import { db } from '../db';
+import { defaultCountRule } from './counts';
 import { shiftYmd, todayYmd } from './dates';
 import type { ItemCategory } from '../types';
 
@@ -20,7 +21,7 @@ export async function createSampleTrip(): Promise<string> {
     if (!items.has(name)) {
       // Reuse an existing library item with the same name, so loading the sample twice doesn't duplicate it.
       const existing = await db.items.filter((i) => i.name.toLowerCase() === name.toLowerCase()).first();
-      items.set(name, existing?.id ?? (await repo.createItem({ name, category, description })).id);
+      items.set(name, existing?.id ?? (await repo.createItem({ name, category, description, countRule: defaultCountRule(name, category) })).id);
     }
     return items.get(name)!;
   };
@@ -37,6 +38,8 @@ export async function createSampleTrip(): Promise<string> {
     ['Phone charger', 'Electronics'],
     ['Toiletry kit', 'Toiletries'],
     ['Comfortable sneakers', 'Shoes'],
+    ['Socks', 'Clothing'],
+    ['Underwear', 'Clothing'],
   ]);
   const pool = await repo.createPlace(vegas.id, { name: 'Resort pool', type: 'Pool / Beach' });
   const poolTime = await repo.createActivity(pool.id, { name: 'Pool time', start: day(1, '11:00'), end: day(1, '16:00') });

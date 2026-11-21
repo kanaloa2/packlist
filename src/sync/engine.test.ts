@@ -155,6 +155,21 @@ describe('sync engine', () => {
     expect((await db.trips.get(trip.id))?.photo).toBeUndefined();
   });
 
+  it('syncs per-trip counts and count rules, and keeps them when ticking packed', async () => {
+    const { trip, item } = await seed();
+    await repo.updateItem(item.id, { name: 'Socks', category: 'Clothing', countRule: 'perDay' });
+    await repo.setPackQuantity(trip.id, item.id, 4);
+    await repo.setPacked(trip.id, item.id, false);
+    await settle();
+    await engine.syncNow();
+    expect(server.table('items').get(item.id)).toMatchObject({ count_rule: 'perDay' });
+    expect(server.table('pack_status').get(`${trip.id}:${item.id}`)).toMatchObject({ quantity: 4, packed: false });
+    // Another device resets it to automatic.
+    server.table('pack_status').get(`${trip.id}:${item.id}`)!.quantity = null;
+    await engine.syncNow();
+    expect((await db.packStatus.get(`${trip.id}:${item.id}`))?.quantity).toBeNull();
+  });
+
   it('does not record changes while signed out', async () => {
     await engine.stop();
     await repo.createItem({ name: 'Local only', category: 'Other' });

@@ -46,7 +46,12 @@ export function parseBackup(text: string): Backup {
 export async function importBackup(backup: Backup, mode: 'replace' | 'merge'): Promise<number> {
   let count = 0;
   await db.transaction('rw', [...ALL_TABLES], async () => {
-    if (mode === 'replace') for (const t of ALL_TABLES) await db.table(t).clear();
+    // Delete row by row (children first) rather than clear(), so each deletion syncs to the server.
+    if (mode === 'replace') {
+      for (const t of [...ALL_TABLES].reverse()) {
+        await db.table(t).bulkDelete(await db.table(t).toCollection().primaryKeys());
+      }
+    }
     for (const t of ALL_TABLES) {
       const rows = (backup.data[t] ?? []) as object[];
       if (rows.length) await db.table(t).bulkPut(rows);
@@ -54,4 +59,13 @@ export async function importBackup(backup: Backup, mode: 'replace' | 'merge'): P
     }
   });
   return count;
+}
+
+/** Deletes all of the user's data (on this device and, via sync, on the server). */
+export async function deleteAllData(): Promise<void> {
+  await db.transaction('rw', [...ALL_TABLES], async () => {
+    for (const t of [...ALL_TABLES].reverse()) {
+      await db.table(t).bulkDelete(await db.table(t).toCollection().primaryKeys());
+    }
+  });
 }

@@ -9,6 +9,8 @@ import { ItemsPage } from './pages/ItemsPage';
 import { ItemPage } from './pages/ItemPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { Empty } from './components/ui';
+import { AuthGate } from './auth/AuthGate';
+import { SyncIndicator } from './components/SyncIndicator';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -20,6 +22,14 @@ function ScrollToTop() {
 
 export default function App() {
   return (
+    <AuthGate>
+      <Shell />
+    </AuthGate>
+  );
+}
+
+function Shell() {
+  return (
     <HashRouter>
       <ScrollToTop />
       <header className="topbar">
@@ -28,6 +38,8 @@ export default function App() {
             <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={28} height={28} />
             Packlist
           </NavLink>
+          <div className="topbar-right">
+            <SyncIndicator />
           <nav className="topnav" aria-label="Main">
             <NavLink to="/" end>
               Trips
@@ -35,6 +47,7 @@ export default function App() {
             <NavLink to="/items">Items</NavLink>
             <NavLink to="/settings">Settings</NavLink>
           </nav>
+          </div>
         </div>
       </header>
       <main className="main">

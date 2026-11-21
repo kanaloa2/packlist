@@ -1,13 +1,19 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, ALL_TABLES } from '../db';
-import { exportBackup, importBackup, parseBackup } from '../lib/backup';
+import { db } from '../db';
+import { deleteAllData, exportBackup, importBackup, parseBackup } from '../lib/backup';
+import { useAuth } from '../auth/AuthGate';
+import { Modal } from '../components/Modal';
+import { supabase } from '../supabase';
+import { sync, useSyncStatus } from '../sync';
 import { createSampleTrip } from '../lib/sample';
 import { todayYmd } from '../lib/dates';
 
 export function SettingsPage() {
   const navigate = useNavigate();
+  const { session, signOut } = useAuth();
+  const syncStatus = useSyncStatus();
   const fileInput = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const counts = useLiveQuery(async () => ({
@@ -49,10 +55,35 @@ export function SettingsPage() {
       <h1>Settings</h1>
 
       <section className="panel">
+        <h2>Account</h2>
+        <p>
+          Signed in as <strong>{session.user.email}</strong>
+        </p>
+        <p className="muted small">
+          {syncStatus.pending
+            ? `${syncStatus.pending} change${syncStatus.pending === 1 ? '' : 's'} waiting to sync.`
+            : syncStatus.lastSyncedAt
+              ? `Everything is synced (last checked ${new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}).`
+              : 'Syncing…'}
+          {syncStatus.rejected > 0 &&
+            ` ${syncStatus.rejected} change${syncStatus.rejected === 1 ? ' was' : 's were'} rejected by the server (usually because something was deleted on another device).`}
+        </p>
+        <div className="row-actions">
+          <button className="btn btn-secondary" onClick={() => sync.syncNow()}>
+            Sync now
+          </button>
+          <ChangePassword />
+          <button className="btn btn-ghost" onClick={signOut}>
+            Sign out
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>Your data</h2>
         <p className="muted">
-          Packlist stores everything — including photos — on this device, in your browser. It works offline and nothing
-          is uploaded anywhere. Export a backup to keep it safe or move it to another device.
+          Your trips, items and photos are saved to your account, so you can sign in on any device. This device also
+          keeps a copy, so Packlist works offline — changes sync when you’re back online. Only you can see your data.
         </p>
         {counts && (
           <p className="small">
@@ -93,14 +124,12 @@ export function SettingsPage() {
 
       <section className="panel danger-zone">
         <h2>Danger zone</h2>
-        <p className="muted">Permanently deletes all trips, items and photos on this device.</p>
+        <p className="muted">Permanently deletes all your trips and items, on every device. Your account stays.</p>
         <button
           className="btn btn-danger"
           onClick={async () => {
-            if (confirm('Delete ALL Packlist data on this device? This cannot be undone.')) {
-              await db.transaction('rw', [...ALL_TABLES], async () => {
-                for (const t of ALL_TABLES) await db.table(t).clear();
-              });
+            if (confirm('Delete ALL your trips and items, on every device? This cannot be undone.')) {
+              await deleteAllData();
               setStatus(null);
               navigate('/');
             }
@@ -110,5 +139,59 @@ export function SettingsPage() {
         </button>
       </section>
     </div>
+  );
+}
+
+function ChangePassword() {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const close = () => {
+    setOpen(false);
+    setPw('');
+    setError('');
+  };
+  return (
+    <>
+      <button className="btn btn-ghost" onClick={() => setOpen(true)}>
+        {done ? 'Password updated ✓' : 'Change password'}
+      </button>
+      <Modal open={open} title="Change password" onClose={close}>
+        <form
+          className="form"
+          noValidate
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (pw.length < 8) return setError('Passwords must be at least 8 characters.');
+            const { error } = await supabase.auth.updateUser({ password: pw });
+            if (error) return setError(error.message);
+            setDone(true);
+            close();
+          }}
+        >
+          <div className="field">
+            <label className="label" htmlFor="change-pw">
+              New password
+            </label>
+            <input id="change-pw" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
+            <p className="hint">At least 8 characters.</p>
+          </div>
+          {error && (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="form-actions">
+            <button type="button" className="btn btn-ghost" onClick={close}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary">
+              Save password
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </>
   );
 }

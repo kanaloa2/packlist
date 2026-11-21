@@ -1,0 +1,222 @@
+import { EntityDialog, type FieldDef, type Values } from './EntityDialog';
+import * as repo from '../lib/repo';
+import { formatDate, shiftYmd, todayYmd } from '../lib/dates';
+import {
+  CATEGORY_ICONS,
+  ITEM_CATEGORIES,
+  PLACE_ICONS,
+  PLACE_TYPES,
+  type Activity,
+  type Destination,
+  type Item,
+  type ItemCategory,
+  type Place,
+  type PlaceType,
+  type Trip,
+} from '../types';
+
+interface Base<T> {
+  open: boolean;
+  onClose: () => void;
+  existing?: T;
+  onSaved?: (id: string) => void;
+}
+
+const common = (v: Values) => ({ name: v.name ?? '', description: v.description ?? '', photo: v.photo });
+
+// ---------- Trip ----------
+
+export function TripDialog({ open, onClose, existing, onSaved }: Base<Trip>) {
+  const fields: FieldDef[] = [
+    { key: 'name', label: 'Trip name', type: 'text', required: true, placeholder: 'Spring break 2027', autoFocus: true },
+    { key: 'startDate', label: 'Start date', type: 'date', required: true },
+    { key: 'endDate', label: 'End date', type: 'date', required: true },
+    { key: 'description', label: 'Description', type: 'textarea', placeholder: 'What is this trip about?' },
+    { key: 'photo', label: 'Photo', type: 'photo' },
+  ];
+  const today = todayYmd();
+  return (
+    <EntityDialog
+      open={open}
+      onClose={onClose}
+      title={existing ? 'Edit trip' : 'New trip'}
+      submitLabel={existing ? 'Save' : 'Create trip'}
+      fields={fields}
+      initial={
+        existing
+          ? { ...existing }
+          : { name: '', description: '', startDate: today, endDate: shiftYmd(today, 3) }
+      }
+      onValuesChange={(next) =>
+        // Keep end date from falling before start date while editing.
+        next.startDate && next.endDate && next.endDate < next.startDate ? { ...next, endDate: next.startDate } : next
+      }
+      onSubmit={async (v) => {
+        const input = { ...common(v), startDate: v.startDate ?? '', endDate: v.endDate ?? '' };
+        if (existing) {
+          await repo.updateTrip(existing.id, input);
+          onSaved?.(existing.id);
+        } else {
+          const t = await repo.createTrip(input);
+          onSaved?.(t.id);
+        }
+      }}
+    />
+  );
+}
+
+// ---------- Destination ----------
+
+export function DestinationDialog({ open, onClose, existing, onSaved, tripId }: Base<Destination> & { tripId: string }) {
+  return (
+    <EntityDialog
+      open={open}
+      onClose={onClose}
+      title={existing ? 'Edit destination' : 'New destination'}
+      submitLabel={existing ? 'Save' : 'Add destination'}
+      fields={[
+        { key: 'name', label: 'Destination', type: 'text', required: true, placeholder: 'Las Vegas', autoFocus: true },
+        { key: 'description', label: 'Description', type: 'textarea' },
+        { key: 'photo', label: 'Photo', type: 'photo' },
+      ]}
+      initial={existing ? { ...existing } : { name: '', description: '' }}
+      onSubmit={async (v) => {
+        if (existing) {
+          await repo.updateDestination(existing.id, common(v));
+          onSaved?.(existing.id);
+        } else {
+          const d = await repo.createDestination(tripId, common(v));
+          onSaved?.(d.id);
+        }
+      }}
+    />
+  );
+}
+
+// ---------- Place ----------
+
+export function PlaceDialog({ open, onClose, existing, onSaved, destinationId }: Base<Place> & { destinationId: string }) {
+  return (
+    <EntityDialog
+      open={open}
+      onClose={onClose}
+      title={existing ? 'Edit place' : 'New place'}
+      submitLabel={existing ? 'Save' : 'Add place'}
+      fields={[
+        { key: 'name', label: 'Place', type: 'text', required: true, placeholder: 'The Bellagio', autoFocus: true },
+        { key: 'type', label: 'Type', type: 'select', options: PLACE_TYPES, icons: PLACE_ICONS },
+        { key: 'address', label: 'Address', type: 'text', placeholder: 'Optional' },
+        { key: 'description', label: 'Description', type: 'textarea' },
+        { key: 'photo', label: 'Photo', type: 'photo' },
+      ]}
+      initial={existing ? { ...existing } : { name: '', description: '', type: 'Hotel', address: '' }}
+      onSubmit={async (v) => {
+        const input = { ...common(v), type: (v.type ?? 'Other') as PlaceType, address: v.address ?? '' };
+        if (existing) {
+          await repo.updatePlace(existing.id, input);
+          onSaved?.(existing.id);
+        } else {
+          const p = await repo.createPlace(destinationId, input);
+          onSaved?.(p.id);
+        }
+      }}
+    />
+  );
+}
+
+// ---------- Activity ----------
+
+export function ActivityDialog({
+  open,
+  onClose,
+  existing,
+  onSaved,
+  placeId,
+  trip,
+  defaultDay,
+}: Base<Activity> & { placeId: string; trip: Trip; defaultDay?: string }) {
+  const min = `${trip.startDate}T00:00`;
+  const max = `${trip.endDate}T23:59`;
+  const day = defaultDay && defaultDay >= trip.startDate && defaultDay <= trip.endDate ? defaultDay : trip.startDate;
+  const hint = `Must be within the trip: ${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
+  return (
+    <EntityDialog
+      open={open}
+      onClose={onClose}
+      title={existing ? 'Edit activity' : 'New activity'}
+      submitLabel={existing ? 'Save' : 'Add activity'}
+      fields={[
+        { key: 'name', label: 'Activity', type: 'text', required: true, placeholder: 'Dinner, Pool time, Check in…', autoFocus: true },
+        { key: 'start', label: 'Starts', type: 'datetime', required: true, min, max, hint },
+        { key: 'end', label: 'Ends', type: 'datetime', required: true, min, max },
+        { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Dress code, reservation details…' },
+        { key: 'photo', label: 'Photo', type: 'photo' },
+      ]}
+      initial={existing ? { ...existing } : { name: '', description: '', start: `${day}T12:00`, end: `${day}T13:00` }}
+      onValuesChange={(next, prev) => {
+        // Moving the start drags the end along, preserving duration.
+        if (next.start && prev.start && next.start !== prev.start && next.end) {
+          const dur = toMs(prev.end ?? prev.start) - toMs(prev.start);
+          if (dur >= 0) return { ...next, end: fromMs(toMs(next.start) + dur) };
+        }
+        return next;
+      }}
+      onSubmit={async (v) => {
+        const input = { ...common(v), start: v.start ?? '', end: v.end ?? '' };
+        if (existing) {
+          await repo.updateActivity(existing.id, input);
+          onSaved?.(existing.id);
+        } else {
+          const a = await repo.createActivity(placeId, input);
+          onSaved?.(a.id);
+        }
+      }}
+    />
+  );
+}
+
+function toMs(v: string) {
+  return new Date(v).getTime();
+}
+function fromMs(ms: number) {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ---------- Item ----------
+
+export function ItemDialog({
+  open,
+  onClose,
+  existing,
+  onSaved,
+  defaultName = '',
+  defaultCategory = 'Clothing',
+}: Base<Item> & { defaultName?: string; defaultCategory?: ItemCategory }) {
+  return (
+    <EntityDialog
+      open={open}
+      onClose={onClose}
+      title={existing ? 'Edit item' : 'New item'}
+      submitLabel={existing ? 'Save' : 'Create item'}
+      fields={[
+        { key: 'name', label: 'Item', type: 'text', required: true, placeholder: 'Black blazer', autoFocus: true },
+        { key: 'category', label: 'Category', type: 'select', options: ITEM_CATEGORIES, icons: CATEGORY_ICONS },
+        { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Color, size, brand…' },
+        { key: 'photo', label: 'Photo', type: 'photo' },
+      ]}
+      initial={existing ? { ...existing } : { name: defaultName, description: '', category: defaultCategory }}
+      onSubmit={async (v) => {
+        const input = { ...common(v), category: (v.category ?? 'Other') as ItemCategory };
+        if (existing) {
+          await repo.updateItem(existing.id, input);
+          onSaved?.(existing.id);
+        } else {
+          const i = await repo.createItem(input);
+          onSaved?.(i.id);
+        }
+      }}
+    />
+  );
+}

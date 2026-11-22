@@ -30,7 +30,11 @@ Trip (start & end dates)
   - **Change the count for one trip.** Tap an item on the packing list and use **Pack for this trip** to set your own number, for example 4 pairs of socks instead of 6. It only affects that trip, survives ticking the item as packed, and **Use automatic** puts it back.
 - **Activity pages** show, under each item, the other activities on the trip that use it.
 - **Schedule** view shows the trip day by day.
-- **Duplicate** a trip to reuse its whole itinerary on new dates. **Copy items** from one activity to another.
+- **Duplicate** a trip to reuse its whole itinerary on new dates.
+- **Copy items** between activities on the same or different trips: on an activity, tap **Copy items…**.
+  - **Bring items here** from another activity, or from a trip's whole-trip list.
+  - **Send items from here** to another activity or a whole-trip list.
+  - Tick exactly which items to copy. Quantities and notes come along, and items already at the destination are skipped. Items aren't duplicated in your library: the same item is linked to the other activity.
 - Activity times are validated against the trip's dates. A trip's dates can't be changed in a way that would leave activities outside the trip.
 
 ## Accounts, sync and privacy

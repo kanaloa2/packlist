@@ -5,11 +5,10 @@ import { db } from '../db';
 import { useAllItems, useRecord, useTripData } from '../hooks';
 import { ActivityDialog } from '../components/forms';
 import { Breadcrumbs, Empty, Hero, NotFound, SectionHeader, Thumb } from '../components/ui';
-import { Modal } from '../components/Modal';
 import { ItemPicker } from '../components/ItemPicker';
+import { CopyItemsDialog } from '../components/CopyItemsDialog';
 import {
   addItemToActivity,
-  copyActivityItems,
   deleteActivity,
   removeActivityItem,
   updateActivityItem,
@@ -98,11 +97,9 @@ export function ActivityPage() {
         count={rows.length}
         action={
           <div className="row-actions">
-            {data.activities.length > 1 && (
-              <button className="btn btn-ghost btn-small" onClick={() => setDialog('copy')}>
-                Copy from…
-              </button>
-            )}
+            <button className="btn btn-ghost btn-small" onClick={() => setDialog('copy')}>
+              Copy items…
+            </button>
             <button className="btn btn-primary btn-small" onClick={() => setDialog('pick')}>
               + Add items
             </button>
@@ -183,14 +180,7 @@ export function ActivityPage() {
         }}
         tripItemIds={new Set([...data.activityItems, ...data.tripItems].map((l) => l.itemId))}
       />
-      <CopyDialog
-        open={dialog === 'copy'}
-        onClose={() => setDialog(null)}
-        activity={activity}
-        candidates={data.activities.filter((a) => a.id !== activity.id)}
-        counts={data.activityItems}
-        placeName={(id) => data.places.find((p) => p.id === id)?.name ?? ''}
-      />
+      <CopyItemsDialog open={dialog === 'copy'} onClose={() => setDialog(null)} activity={activity} trip={trip} />
     </div>
   );
 }
@@ -207,70 +197,5 @@ function NoteInput({ link }: { link: ActivityItem }) {
       onBlur={() => value !== link.note && updateActivityItem(link.id, { note: value })}
       onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
     />
-  );
-}
-
-function CopyDialog({
-  open,
-  onClose,
-  activity,
-  candidates,
-  counts,
-  placeName,
-}: {
-  open: boolean;
-  onClose: () => void;
-  activity: Activity;
-  candidates: Activity[];
-  counts: ActivityItem[];
-  placeName: (id: string) => string;
-}) {
-  const [msg, setMsg] = useState('');
-  const withItems = candidates.filter((c) => counts.some((l) => l.activityId === c.id));
-  return (
-    <Modal
-      open={open}
-      title="Copy items from another activity"
-      onClose={() => {
-        setMsg('');
-        onClose();
-      }}
-    >
-      {withItems.length === 0 ? (
-        <p className="muted">No other activities on this trip have items yet.</p>
-      ) : (
-        <ul className="picker-list">
-          {withItems.map((c) => {
-            const n = counts.filter((l) => l.activityId === c.id).length;
-            return (
-              <li key={c.id}>
-                <button
-                  className="picker-item"
-                  onClick={async () => {
-                    const added = await copyActivityItems(c.id, activity.id);
-                    setMsg(`Added ${added} item${added === 1 ? '' : 's'} from “${c.name}”.`);
-                  }}
-                >
-                  <span className="picker-text">
-                    <span>{c.name}</span>
-                    <span className="muted small">
-                      {placeName(c.placeId)} · {formatActivityTime(c.start, c.end)}
-                    </span>
-                  </span>
-                  <span className="pill">
-                    {n} item{n === 1 ? '' : 's'}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {msg && (
-        <p className="success" role="status">
-          {msg}
-        </p>
-      )}
-    </Modal>
   );
 }

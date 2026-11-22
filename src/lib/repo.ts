@@ -434,16 +434,47 @@ export async function removeItemFromTrip(tripId: string, itemId: string): Promis
   await db.tripItems.where('tripId').equals(tripId).filter((t) => t.itemId === itemId).delete();
 }
 
+/** Where copied items go: an activity, or a trip's whole-trip list. */
+export type CopyTarget = { kind: 'activity'; id: string } | { kind: 'trip'; id: string };
+
+/**
+ * Adds the given items (with their quantity and note) to the target. Items already there are
+ * left as they are. The items themselves aren't duplicated — they live in the shared library,
+ * so copying to another trip just links the same item. Returns how many were added.
+ */
+export async function copyItemLinks(links: { itemId: string; quantity: number; note: string }[], target: CopyTarget): Promise<number> {
+  if (target.kind === 'activity') {
+    const act = await db.activities.get(target.id);
+    if (!act) throw new Error('Activity not found');
+    return db.transaction('rw', db.activityItems, async () => {
+      const present = new Set((await db.activityItems.where('activityId').equals(act.id).toArray()).map((l) => l.itemId));
+      const fresh = dedupe(links).filter((l) => !present.has(l.itemId));
+      await db.activityItems.bulkAdd(
+        fresh.map((l) => ({ id: newId(), tripId: act.tripId, activityId: act.id, itemId: l.itemId, quantity: Math.max(1, l.quantity), note: l.note, createdAt: Date.now() })),
+      );
+      return fresh.length;
+    });
+  }
+  if (!(await db.trips.get(target.id))) throw new Error('Trip not found');
+  return db.transaction('rw', db.tripItems, async () => {
+    const present = new Set((await db.tripItems.where('tripId').equals(target.id).toArray()).map((l) => l.itemId));
+    const fresh = dedupe(links).filter((l) => !present.has(l.itemId));
+    await db.tripItems.bulkAdd(
+      fresh.map((l) => ({ id: newId(), tripId: target.id, itemId: l.itemId, quantity: Math.max(1, l.quantity), note: l.note, createdAt: Date.now() })),
+    );
+    return fresh.length;
+  });
+}
+
+function dedupe<T extends { itemId: string }>(links: T[]): T[] {
+  const seen = new Set<string>();
+  return links.filter((l) => !seen.has(l.itemId) && seen.add(l.itemId));
+}
+
 /** Copies all items from one activity onto another (skips ones already there). */
 export async function copyActivityItems(fromActivityId: string, toActivityId: string): Promise<number> {
   const links = await db.activityItems.where('activityId').equals(fromActivityId).toArray();
-  let added = 0;
-  for (const l of links) {
-    const before = await db.activityItems.count();
-    await addItemToActivity(toActivityId, l.itemId, l.quantity);
-    if ((await db.activityItems.count()) > before) added++;
-  }
-  return added;
+  return copyItemLinks(links, { kind: 'activity', id: toActivityId });
 }
 
 // ---------- Packing ----------

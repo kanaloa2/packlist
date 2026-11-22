@@ -1600,3 +1600,45 @@ input[type='password'] {
 .trip-level-note {
   margin: 0.25rem 0 0.5rem;
 }
+
+/* ---------- Copy items ---------- */
+
+.copy-dialog .segmented {
+  align-self: flex-start;
+}
+.copy-items-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.copy-items-head .row-actions {
+  gap: 0.75rem;
+}
+.copy-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.copy-item {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  align-items: center;
+  gap: 0.6rem;
+}
+.copy-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.copy-item-there {
+  opacity: 0.55;
+  cursor: default;
+}

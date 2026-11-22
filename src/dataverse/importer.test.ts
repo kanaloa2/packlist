@@ -105,7 +105,7 @@ describe('Dataverse import plan', () => {
     expect(plan.tripOnlyItems).toEqual([{ trip: 'Vegas', items: ['Passport'] }]);
     expect(plan.tripItems.map((t) => nameOf(t.itemId))).toEqual(['Passport']); // becomes a whole-trip item
     expect(plan.tripItems[0].tripId).toBe(plan.trips[0].id);
-    expect(plan.photos.map((p) => [p.table, p.ids.length, p.path.split('/')[0]])).toEqual([
+    expect(plan.photos.map((p) => [p.table, p.ids.length, p.record])).toEqual([
       ['trips', 1, `cr282_packlist_trips(${T1})`],
       ['destinations', 2, `cr282_packlist_destinations(${D2})`], // one image, two copies
       ['items', 1, `cr282_packlist_items(${I1})`],
@@ -128,16 +128,18 @@ describe('applying an import', () => {
   const fakeImages = {
     token: 'tok',
     fetcher: (async (url: string) =>
-      url.includes(`cr282_packlist_items(${I1})`) || url.includes('trips(')
-        ? new Response(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }), { status: 200 })
-        : new Response(null, { status: 204 })) as unknown as typeof fetch,
+      url.includes('?$select=')
+        ? new Response(JSON.stringify({}), { status: 200 }) // record has no inline image either
+        : url.includes(`cr282_packlist_items(${I1})`) || url.includes('trips(')
+          ? new Response(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }), { status: 200 })
+          : new Response(null, { status: 204 })) as unknown as typeof fetch,
   };
   const resize = async (b: Blob) => `data:image/jpeg;base64,${b.size}`;
 
   it('saves everything, downloads photos, and keeps only counts that differ from automatic', async () => {
     const plan = await buildPlan(source(), 'user-1');
     const r = await applyPlan(cfg, plan, { includePhotos: true, deps: fakeImages, resize });
-    expect(r).toEqual({ photos: 2, photoFailures: 0 });
+    expect(r).toMatchObject({ photos: 2, photoFailures: 0, photoMissing: 1 }); // the destination image came back empty
     expect(await db.trips.count()).toBe(2);
     expect(await db.activities.count()).toBe(4);
     expect(await db.activityItems.count()).toBe(4);
@@ -182,10 +184,12 @@ describe('reading from Dataverse', () => {
           { SchemaName: 'ai1', Entity1LogicalName: T.item.table, Entity2LogicalName: T.activity.table, Entity1NavigationPropertyName: 'x', Entity2NavigationPropertyName: 'navAI1' },
           { SchemaName: 'ai2', Entity1LogicalName: T.activity.table, Entity2LogicalName: T.item.table, Entity1NavigationPropertyName: 'navAI2', Entity2NavigationPropertyName: 'x' },
         ] });
+      if (path.includes('ImageAttributeMetadata'))
+        return json({ value: path.includes(T.item.table) ? [{ LogicalName: 'cr282_photo', CanStoreFullImage: true, IsPrimaryImage: true }] : [] });
       if (path.startsWith(T.trip.set)) return json({ value: [{ [T.trip.id]: T1, navTripDest: [{ [T.destination.id]: D1 }], navTripItem: [{ [T.item.id]: I4 }] }] });
       if (path.startsWith(T.activity.set)) return json({ value: [{ [T.activity.id]: A1, navAI1: [{ [T.item.id]: I1 }], navAI2: [{ [T.item.id]: I2 }] }] });
-      if (path.startsWith(`${T.item.set}?$skiptoken`)) return json({ value: [{ [T.item.id]: I2 }] });
-      if (path.startsWith(`${T.item.set}?`)) return json({ value: [{ [T.item.id]: I1 }], '@odata.nextLink': `${base}${T.item.set}?$skiptoken=2` });
+      if (path.startsWith(`${T.item.set}?$skiptoken`)) return json({ value: [{ [T.item.id]: I2, cr282_photoid: null }] });
+      if (path.startsWith(`${T.item.set}?`)) return json({ value: [{ [T.item.id]: I1, cr282_photoid: 'img-1' }], '@odata.nextLink': `${base}${T.item.set}?$skiptoken=2` });
       return json({ value: [] });
     }) as unknown as typeof fetch;
     const src = await fetchSource({ envUrl: 'https://org81670796.crm.dynamics.com', clientId: 'c', tenantId: 't' }, { fetcher, token: 'tok' });
@@ -193,6 +197,13 @@ describe('reading from Dataverse', () => {
     expect(src.tripItems).toEqual([[T1, I4]]);
     expect(src.activityItems).toEqual([[A1, I1], [A1, I2]]);
     expect(src.items).toHaveLength(2); // second page followed
+    // Image columns come from metadata: items have one (cr282_photo, full size), trips don't.
+    expect(src.images?.item).toEqual({ column: 'cr282_photo', full: true });
+    expect(src.images?.trip).toBeNull();
+    expect(seen.find((p) => p.startsWith(`${T.item.set}?`))).toContain('cr282_photoid');
+    expect(src.items.map((i) => i.__image)).toEqual([true, false]);
+    const plan = await buildPlan({ ...src, places: [], destinations: [] }, 'user-1');
+    expect(plan.photos.map((p) => [p.record, p.image.column, p.image.full])).toEqual([[`cr282_packlist_items(${I1})`, 'cr282_photo', true]]);
     expect(seen.find((p) => p.startsWith(T.activity.set))).toContain('$expand=navAI1(');
     expect(seen.filter((p) => !p.startsWith('EntityDefinitions')).every((p) => p.includes('statecode eq 0') || p.includes('skiptoken'))).toBe(true);
   });
@@ -251,5 +262,45 @@ describe('import into the places library', () => {
     await applyPlan(cfg, await buildPlan(source(), 'user-1'), { includePhotos: false, resize });
     expect((await db.places.get(bellagio.id))?.libraryId).toBe('backfilled-lib');
     expect(await db.placeLibrary.count()).toBe(3); // no duplicate Bellagio
+  });
+});
+
+describe('downloading images', async () => {
+  const { downloadImage } = await import('./importer');
+  const cfg = { envUrl: 'https://org81670796.crm.dynamics.com', clientId: 'c', tenantId: 't' };
+  const job = (full: boolean) => ({ table: 'items' as const, ids: ['x'], record: `cr282_packlist_items(${I1})`, image: { column: 'cr282_photo', full } });
+  const img = () => new Response(new Blob([new Uint8Array([9, 9])], { type: 'image/png' }), { status: 200 });
+  function fake(routes: (path: string) => Response) {
+    const seen: string[] = [];
+    const fetcher = (async (url: string) => {
+      const path = decodeURIComponent(url.replace('https://org81670796.crm.dynamics.com/api/data/v9.2/', ''));
+      seen.push(path);
+      return routes(path);
+    }) as unknown as typeof fetch;
+    return { deps: { fetcher, token: 't' }, seen };
+  }
+
+  it('asks for the full-size image when stored, falling back to the standard one', async () => {
+    const { deps, seen } = fake((p) => (p.endsWith('?size=full') ? new Response(null, { status: 404 }) : img()));
+    expect((await downloadImage(cfg, job(true), deps))?.size).toBe(2);
+    expect(seen).toEqual([`cr282_packlist_items(${I1})/cr282_photo/$value?size=full`, `cr282_packlist_items(${I1})/cr282_photo/$value`]);
+  });
+
+  it('skips the full-size request when only standard images are stored', async () => {
+    const { deps, seen } = fake(() => img());
+    await downloadImage(cfg, job(false), deps);
+    expect(seen).toEqual([`cr282_packlist_items(${I1})/cr282_photo/$value`]);
+  });
+
+  it('falls back to the small inline copy on the record', async () => {
+    const { deps } = fake((p) => (p.includes('?$select=') ? new Response(JSON.stringify({ cr282_photo: btoa('abc') }), { status: 200 }) : new Response(null, { status: 204 })));
+    expect((await downloadImage(cfg, job(true), deps))?.size).toBe(3);
+  });
+
+  it('reports the error when every attempt fails, and null when there is simply no image', async () => {
+    const bad = fake(() => new Response(JSON.stringify({ error: { message: 'Could not find a property named cr282_photo' } }), { status: 400 }));
+    await expect(downloadImage(cfg, job(true), bad.deps)).rejects.toThrow(/Could not find a property/);
+    const none = fake((p) => (p.includes('?$select=') ? new Response(JSON.stringify({ cr282_photo: null }), { status: 200 }) : new Response(null, { status: 204 })));
+    expect(await downloadImage(cfg, job(false), none.deps)).toBeNull();
   });
 });

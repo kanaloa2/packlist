@@ -130,8 +130,11 @@ export function DataversePanel() {
       setDone(
         `Imported ${plan.trips.length} trip${plan.trips.length === 1 ? '' : 's'}, ${plan.activities.length} activities and ${plan.items.length} items` +
           (includePhotos ? ` with ${r.photos} photo${r.photos === 1 ? '' : 's'}` : '') +
-          (r.photoFailures ? ` (${r.photoFailures} photo${r.photoFailures === 1 ? '' : 's'} couldn’t be downloaded)` : '') +
-          '. It’s syncing to your account now.',
+          '. It’s syncing to your account now.' +
+          (r.photoMissing ? ` ${r.photoMissing} record${r.photoMissing === 1 ? '' : 's'} marked as having a photo returned no image data.` : '') +
+          (r.photoFailures
+            ? ` ${r.photoFailures} photo${r.photoFailures === 1 ? '' : 's'} couldn’t be downloaded: ${r.firstPhotoError ?? 'unknown error'}`
+            : ''),
       );
       setPlan(null);
     }
@@ -461,7 +464,7 @@ function ImportPreview({
       )}
       <label className="toggle">
         <input type="checkbox" checked={includePhotos} onChange={(e) => setIncludePhotos(e.target.checked)} />
-        Include photos ({plan.photos.length})
+        Include photos ({plan.photos.length ? `${plan.photos.length} record${plan.photos.length === 1 ? ' has' : 's have'} one in Dataverse` : 'none found in Dataverse'})
       </label>
       <div className="row-actions">
         <button className="btn btn-primary" onClick={onImport}>

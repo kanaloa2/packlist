@@ -28,8 +28,17 @@ export const T = {
   itemCount: { table: 'cr282_packlist_itemcount', set: 'cr282_packlist_itemcounts', id: 'cr282_packlist_itemcountid' },
 } as const;
 
-/** Image columns are named like their "…imageid" helper column without the "id". */
-const IMAGE_COLUMN = 'cr282_image';
+/** An image column on a table, as found in Dataverse metadata. */
+export interface ImageColumn {
+  column: string;
+  /** Whether full-size images are stored (otherwise only the standard 144px version exists). */
+  full: boolean;
+}
+
+/** Used if metadata can't be read: the column implied by the "cr282_imageid" helper column. */
+const FALLBACK_IMAGE: ImageColumn = { column: 'cr282_image', full: false };
+
+type ImageTable = 'trip' | 'destination' | 'place' | 'item';
 
 /** PackList_Item "Type" choice → Packlist category, type and counting. */
 export const ITEM_TYPE_MAP: Record<number, { category: ItemCategory; kind: string; countRule: CountRule }> = {
@@ -59,6 +68,29 @@ export interface Source {
   tripItems: [string, string][];
   /** [activityId, itemId] from either Activity⇄Item relationship */
   activityItems: [string, string][];
+  /** Each table's image column (null if it has none). Missing in older tests: assume the default. */
+  images?: Partial<Record<ImageTable, ImageColumn | null>>;
+}
+
+/** Finds a table's image column from metadata (the primary image if there are several). */
+async function imageColumn(c: DataverseConfig, table: string, deps: DvDeps): Promise<ImageColumn | null> {
+  try {
+    const res = await dvGet<{ value: Json[] }>(
+      c,
+      `EntityDefinitions(LogicalName='${table}')/Attributes/Microsoft.Dynamics.CRM.ImageAttributeMetadata?$select=LogicalName,CanStoreFullImage,IsPrimaryImage`,
+      deps,
+    );
+    const cols = res.value ?? [];
+    const pick = cols.find((a) => a.IsPrimaryImage === true) ?? cols[0];
+    return pick ? { column: String(pick.LogicalName), full: pick.CanStoreFullImage === true } : null;
+  } catch {
+    return FALLBACK_IMAGE;
+  }
+}
+
+/** Marks each row with whether it has an image (its "<column>id" is set). */
+function markImages(rows: Json[], img: ImageColumn | null) {
+  for (const r of rows) r.__image = img ? !!r[`${img.column}id`] : false;
 }
 
 // ---------- fetching ----------
@@ -98,12 +130,21 @@ export async function fetchSource(c: DataverseConfig, deps: DvDeps = {}, onProgr
   say('Reading table links…');
   const nav = await navProps(c, deps);
 
+  say('Reading image columns…');
+  const images: Record<ImageTable, ImageColumn | null> = {
+    trip: await imageColumn(c, T.trip.table, deps),
+    destination: await imageColumn(c, T.destination.table, deps),
+    place: await imageColumn(c, T.place.table, deps),
+    item: await imageColumn(c, T.item.table, deps),
+  };
+  const imgSel = (t: ImageTable) => (images[t] ? `,${images[t]!.column}id` : '');
+
   say('Reading trips…');
   const tripExpand = [`${nav.tripDest}($select=${T.destination.id})`, nav.tripItem && `${nav.tripItem}($select=${T.item.id})`].filter(Boolean).join(',');
-  const trips = await dvGetAll(c, `${T.trip.set}?$select=${T.trip.id},cr282_title,cr282_description,cr282_start,cr282_end,cr282_imageid&${ACTIVE}&$expand=${tripExpand}`, deps);
+  const trips = await dvGetAll(c, `${T.trip.set}?$select=${T.trip.id},cr282_title,cr282_description,cr282_start,cr282_end${imgSel('trip')}&${ACTIVE}&$expand=${tripExpand}`, deps);
   say('Reading destinations and places…');
-  const destinations = await dvGetAll(c, `${T.destination.set}?$select=${T.destination.id},cr282_title,cr282_description,cr282_imageid&${ACTIVE}`, deps);
-  const places = await dvGetAll(c, `${T.place.set}?$select=${T.place.id},cr282_title,cr282_description,cr282_imageid,_cr282_packlist_destination_value&${ACTIVE}`, deps);
+  const destinations = await dvGetAll(c, `${T.destination.set}?$select=${T.destination.id},cr282_title,cr282_description${imgSel('destination')}&${ACTIVE}`, deps);
+  const places = await dvGetAll(c, `${T.place.set}?$select=${T.place.id},cr282_title,cr282_description${imgSel('place')},_cr282_packlist_destination_value&${ACTIVE}`, deps);
   say('Reading activities…');
   const actExpand = nav.activityItem.map((n) => `${n}($select=${T.item.id})`).join(',');
   const activities = await dvGetAll(
@@ -112,13 +153,19 @@ export async function fetchSource(c: DataverseConfig, deps: DvDeps = {}, onProgr
     deps,
   );
   say('Reading items and counts…');
-  const items = await dvGetAll(c, `${T.item.set}?$select=${T.item.id},cr282_title,cr282_type,cr282_imageid&${ACTIVE}`, deps);
+  const items = await dvGetAll(c, `${T.item.set}?$select=${T.item.id},cr282_title,cr282_type${imgSel('item')}&${ACTIVE}`, deps);
   const itemCounts = await dvGetAll(c, `${T.itemCount.set}?$select=cr282_count,cr282_packed,_cr282_item_value,_cr282_trip_value,modifiedon&${ACTIVE}`, deps);
 
   const pairs = (rows: Json[], idCol: string, navs: string[], otherId: string): [string, string][] =>
     rows.flatMap((r) => navs.flatMap((n) => ((r[n] as Json[]) ?? []).map((o) => [String(r[idCol]), String(o[otherId])] as [string, string])));
 
+  markImages(trips, images.trip);
+  markImages(destinations, images.destination);
+  markImages(places, images.place);
+  markImages(items, images.item);
+
   return {
+    images,
     trips,
     destinations,
     places,
@@ -137,8 +184,9 @@ export interface PhotoJob {
   table: 'trips' | 'destinations' | 'places' | 'items';
   /** Packlist ids that should get this photo (a destination copied to 2 trips → 2 ids). */
   ids: string[];
-  /** Dataverse path of the image, relative to the Web API root. */
-  path: string;
+  /** Dataverse record, e.g. "cr282_packlist_items(<guid>)". */
+  record: string;
+  image: ImageColumn;
 }
 
 export interface Plan {
@@ -254,12 +302,15 @@ export async function buildPlan(src: Source, userId: string, now = Date.now()): 
     acts.push({ dvId, trip, place: place ? placeId : null, start, end, row: a });
   }
 
-  const photoIds = new Map<string, { table: PhotoJob['table']; path: string; ids: string[] }>();
+  const photoIds = new Map<string, PhotoJob>();
+  const imageTable: Record<PhotoJob['table'], ImageTable> = { trips: 'trip', destinations: 'destination', places: 'place', items: 'item' };
   const addPhoto = (table: PhotoJob['table'], set: string, dvId: string, row: Json, id: string) => {
-    if (!row.cr282_imageid) return;
-    const key = `${set}(${dvId})`;
-    if (!photoIds.has(key)) photoIds.set(key, { table, path: `${key}/${IMAGE_COLUMN}/$value?size=full`, ids: [] });
-    photoIds.get(key)!.ids.push(id);
+    const image = src.images ? src.images[imageTable[table]] : FALLBACK_IMAGE;
+    const has = typeof row.__image === 'boolean' ? row.__image : !!row.cr282_imageid;
+    if (!image || !has) return;
+    const record = `${set}(${dvId})`;
+    if (!photoIds.has(record)) photoIds.set(record, { table, record, image, ids: [] });
+    photoIds.get(record)!.ids.push(id);
   };
 
   // --- Trips (dates widened to fit their activities if needed).
@@ -472,8 +523,48 @@ export async function buildPlan(src: Source, userId: string, now = Date.now()): 
 // ---------- applying ----------
 
 export interface ApplyResult {
+  /** Photos downloaded. */
   photos: number;
+  /** Photos that couldn't be downloaded (see firstPhotoError). */
   photoFailures: number;
+  /** Records Dataverse said had an image but returned none. */
+  photoMissing: number;
+  firstPhotoError?: string;
+}
+
+/**
+ * Downloads one record's image, trying the full-size image (if stored), then the standard
+ * image, then the small copy Dataverse returns inline with the record.
+ */
+export async function downloadImage(c: DataverseConfig, job: PhotoJob, deps?: DvDeps): Promise<Blob | null> {
+  const { record, image } = job;
+  let lastError: unknown = null;
+  const attempts = [
+    ...(image.full ? [`${record}/${image.column}/$value?size=full`] : []),
+    `${record}/${image.column}/$value`,
+  ];
+  for (const path of attempts) {
+    try {
+      const blob = await dvGetBlob(c, path, deps);
+      if (blob) return blob;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  try {
+    const row = await dvGet<Json>(c, `${record}?$select=${image.column}`, deps);
+    const b64 = row[image.column];
+    if (typeof b64 === 'string' && b64) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type: 'image/jpeg' });
+    }
+  } catch (e) {
+    lastError = e;
+  }
+  if (lastError) throw lastError;
+  return null;
 }
 
 /**
@@ -491,6 +582,8 @@ export async function applyPlan(
   const photoFor = new Map<string, string>();
   let photos = 0;
   let photoFailures = 0;
+  let photoMissing = 0;
+  let firstPhotoError: string | undefined;
 
   if (opts.includePhotos && plan.photos.length) {
     let done = 0;
@@ -498,14 +591,17 @@ export async function applyPlan(
     const worker = async () => {
       for (let job = queue.shift(); job; job = queue.shift()) {
         try {
-          const blob = await dvGetBlob(c, job.path, opts.deps);
+          const blob = await downloadImage(c, job, opts.deps);
           if (blob) {
             const dataUrl = await resize(blob);
             for (const id of job.ids) photoFor.set(id, dataUrl);
             photos++;
+          } else {
+            photoMissing++;
           }
-        } catch {
+        } catch (e) {
           photoFailures++;
+          firstPhotoError ??= (e as Error).message;
         }
         say(`Downloading photos… ${++done} of ${plan.photos.length}`);
       }
@@ -573,5 +669,5 @@ export async function applyPlan(
     }
     if (overrides.length) await db.packStatus.bulkPut(overrides);
   }
-  return { photos, photoFailures };
+  return { photos, photoFailures, photoMissing, firstPhotoError };
 }

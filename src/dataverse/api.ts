@@ -58,7 +58,8 @@ export async function dvGetAll(c: DataverseConfig, path: string, deps: DvDeps = 
 /** Downloads a file/image column; null if the record has none. */
 export async function dvGetBlob(c: DataverseConfig, path: string, deps: DvDeps = {}): Promise<Blob | null> {
   try {
-    const res = await dvRequest(c, path, deps, 'application/octet-stream', 'return=representation');
+    // Image downloads reject a strict Accept header in some environments; take whatever comes.
+    const res = await dvRequest(c, path, deps, '*/*', 'return=representation');
     if (res.status === 204) return null;
     const blob = await res.blob();
     return blob.size ? blob : null;

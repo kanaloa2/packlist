@@ -9,7 +9,9 @@ import {
   type GroupBy,
   type PackingEntry,
 } from '../lib/packing';
-import { setAllPacked, setPackQuantity, setPacked } from '../lib/repo';
+import { addItemToTrip, removeItemFromTrip, setAllPacked, setPackQuantity, setPacked } from '../lib/repo';
+import { useAllItems } from '../hooks';
+import { ItemPicker } from './ItemPicker';
 import { formatActivityTime, formatChipTime } from '../lib/dates';
 import { CATEGORY_ICONS } from '../types';
 import { typeLabel } from '../lib/itemTypes';
@@ -41,15 +43,37 @@ export function PackingList({ data }: { data: TripData }) {
   const [showActivities, setShowActivities] = useState(() => readPref(ACTS_KEY, '1') === '1');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const allItems = useAllItems();
 
   const entries = useMemo(() => buildPackingList(data), [data]);
   const groups = useMemo(() => groupPackingList(entries, groupBy, data.destinations), [entries, groupBy, data.destinations]);
   const progress = packingProgress(entries);
 
+  const picker = (
+    <ItemPicker
+      open={picking}
+      onClose={() => setPicking(false)}
+      title="Add items to the whole trip"
+      allItems={allItems ?? []}
+      selected={new Set(data.tripItems.map((l) => l.itemId))}
+      onAdd={(itemId) => addItemToTrip(data.trip.id, itemId)}
+      onRemove={(itemId) => removeItemFromTrip(data.trip.id, itemId)}
+      tripItemIds={new Set([...data.activityItems, ...data.tripItems].map((l) => l.itemId))}
+    />
+  );
+
   if (!entries.length) {
     return (
       <Empty icon="📋" title="Your packing list is empty">
-        <p className="muted">Add items to your activities and they’ll show up here, organized and ready to check off.</p>
+        <p className="muted">
+          Add items to your activities and they’ll show up here, organized and ready to check off. Things you need for the
+          whole trip, like a passport or chargers, can be added directly.
+        </p>
+        <button className="btn btn-primary" onClick={() => setPicking(true)}>
+          + Add items to the whole trip
+        </button>
+        {picker}
       </Empty>
     );
   }
@@ -124,6 +148,9 @@ export function PackingList({ data }: { data: TripData }) {
           Show activities
         </label>
         <div className="toolbar-actions">
+          <button className="btn btn-small btn-secondary" onClick={() => setPicking(true)} title="Add items you need for the whole trip, not one activity">
+            + Whole trip
+          </button>
           <button className="btn btn-small btn-ghost" onClick={copy}>
             {copied ? 'Copied ✓' : 'Share / copy'}
           </button>
@@ -140,6 +167,7 @@ export function PackingList({ data }: { data: TripData }) {
       </div>
 
       <h2 className="print-only">{data.trip.name} — Packing List</h2>
+      {picker}
 
       {groups.map((g) => {
         const visible = hidePacked ? g.entries.filter((e) => !e.packed) : g.entries;
@@ -192,10 +220,12 @@ function PackingRow({
   expanded: boolean;
   onToggleExpand: () => void;
 }) {
-  const { item, quantity, autoQuantity, manual, reason, usages, packed } = entry;
+  const { item, quantity, autoQuantity, manual, reason, usages, packed, tripLevel } = entry;
   // What kind of thing this is, unless the group heading already says so.
   const kindText = groupBy === 'type' ? (item.kind ? item.category : '') : groupBy === 'category' ? item.kind ?? '' : typeLabel(item);
-  const summary = `${usages.length} activit${usages.length === 1 ? 'y' : 'ies'}`;
+  const summary = [tripLevel && 'Whole trip', usages.length && `${usages.length} activit${usages.length === 1 ? 'y' : 'ies'}`]
+    .filter(Boolean)
+    .join(' + ');
   return (
     <li className={`packing-item${packed ? ' packed' : ''}`}>
       <div className="packing-row">
@@ -221,6 +251,13 @@ function PackingRow({
       </div>
       {showActivities && (
         <ul className="usage-chips" aria-label={`Activities using ${item.name}`}>
+          {tripLevel && (
+            <li>
+              <span className="usage-chip usage-chip-trip" title="Added to the whole trip, not one activity">
+                Whole trip
+              </span>
+            </li>
+          )}
           {usages.map((u, i) => (
             <li key={i}>
               <Link
@@ -265,6 +302,14 @@ function PackingRow({
               )}
             </span>
           </div>
+          {tripLevel && (
+            <p className="small trip-level-note">
+              On the whole trip{tripLevel.note && ` · ${tripLevel.note}`}.{' '}
+              <button className="link-btn" onClick={() => removeItemFromTrip(tripId, item.id)}>
+                Remove from whole trip
+              </button>
+            </p>
+          )}
           {item.description && <p className="description">{item.description}</p>}
           <ul className="usage-list">
             {usages.map((u, i) => (

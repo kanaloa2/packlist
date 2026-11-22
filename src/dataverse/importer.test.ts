@@ -103,6 +103,8 @@ describe('Dataverse import plan', () => {
     const socks = plan.packStatus.find((s) => nameOf(s.itemId) === 'Socks')!;
     expect(socks).toMatchObject({ packed: false, count: 3 }); // latest row wins
     expect(plan.tripOnlyItems).toEqual([{ trip: 'Vegas', items: ['Passport'] }]);
+    expect(plan.tripItems.map((t) => nameOf(t.itemId))).toEqual(['Passport']); // becomes a whole-trip item
+    expect(plan.tripItems[0].tripId).toBe(plan.trips[0].id);
     expect(plan.photos.map((p) => [p.table, p.ids.length, p.path.split('/')[0]])).toEqual([
       ['trips', 1, `cr282_packlist_trips(${T1})`],
       ['destinations', 2, `cr282_packlist_destinations(${D2})`], // one image, two copies
@@ -139,6 +141,7 @@ describe('applying an import', () => {
     expect(await db.trips.count()).toBe(2);
     expect(await db.activities.count()).toBe(4);
     expect(await db.activityItems.count()).toBe(4);
+    expect(await db.tripItems.count()).toBe(1);
     expect((await db.trips.get(plan.trips[0].id))?.photo).toBe('data:image/jpeg;base64,3');
     const socks = plan.items.find((i) => i.name === 'Socks')!;
     const shirt = plan.items.find((i) => i.name === 'Blue shirt')!;

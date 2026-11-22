@@ -170,6 +170,20 @@ describe('sync engine', () => {
     expect((await db.packStatus.get(`${trip.id}:${item.id}`))?.quantity).toBeNull();
   });
 
+  it('syncs whole-trip items, and deletes them with their trip on the server', async () => {
+    const { trip } = await seed();
+    const passport = await repo.createItem({ name: 'Passport', category: 'Documents' });
+    await repo.addItemToTrip(trip.id, passport.id);
+    await settle();
+    await engine.syncNow();
+    expect(server.rows('trip_items')).toHaveLength(1);
+    expect(server.rows('trip_items')[0]).toMatchObject({ trip_id: trip.id, item_id: passport.id, quantity: 1 });
+    await repo.deleteTrip(trip.id);
+    await settle();
+    await engine.syncNow();
+    expect(server.rows('trip_items')).toHaveLength(0);
+  });
+
   it('does not record changes while signed out', async () => {
     await engine.stop();
     await repo.createItem({ name: 'Local only', category: 'Other' });

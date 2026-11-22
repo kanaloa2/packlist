@@ -8,6 +8,7 @@ import type {
   ItemCategory,
   PackStatus,
   Place,
+  TripItem,
   PlaceType,
   Trip,
 } from '../types';
@@ -101,6 +102,7 @@ export async function updateTrip(id: string, input: TripInput): Promise<void> {
 export async function deleteTrip(id: string): Promise<void> {
   await db.transaction('rw', [...ALL_TABLES], async () => {
     await db.activityItems.where('tripId').equals(id).delete();
+    await db.tripItems.where('tripId').equals(id).delete();
     await db.packStatus.where('tripId').equals(id).delete();
     await db.activities.where('tripId').equals(id).delete();
     await db.places.where('tripId').equals(id).delete();
@@ -171,6 +173,9 @@ export async function duplicateTrip(id: string, name: string, startDate: string)
         activityId: actMap.get(ai.activityId)!,
         createdAt: Date.now(),
       });
+    }
+    for (const ti of await db.tripItems.where('tripId').equals(id).toArray()) {
+      await db.tripItems.add({ ...ti, id: newId(), tripId: newTrip.id, createdAt: Date.now() });
     }
     return newTrip;
   });
@@ -358,8 +363,9 @@ export async function updateItem(id: string, input: ItemInput): Promise<void> {
 }
 
 export async function deleteItem(id: string): Promise<void> {
-  await db.transaction('rw', [db.items, db.activityItems, db.packStatus], async () => {
+  await db.transaction('rw', [db.items, db.activityItems, db.tripItems, db.packStatus], async () => {
     await db.activityItems.where('itemId').equals(id).delete();
+    await db.tripItems.where('itemId').equals(id).delete();
     await db.packStatus.where('itemId').equals(id).delete();
     await db.items.delete(id);
   });
@@ -403,6 +409,29 @@ export async function updateActivityItem(id: string, changes: { quantity?: numbe
 
 export async function removeActivityItem(id: string): Promise<void> {
   await db.activityItems.delete(id);
+}
+
+// ---------- Trip ⇄ Item (whole-trip items) ----------
+
+/** Adds an item to a whole trip (not tied to an activity); returns the existing link if already there. */
+export async function addItemToTrip(tripId: string, itemId: string, quantity = 1): Promise<TripItem> {
+  if (!(await db.trips.get(tripId))) throw new Error('Trip not found');
+  const existing = await db.tripItems.where('tripId').equals(tripId).filter((t) => t.itemId === itemId).first();
+  if (existing) return existing;
+  const link: TripItem = { id: newId(), tripId, itemId, quantity: Math.max(1, Math.floor(quantity)), note: '', createdAt: Date.now() };
+  await db.tripItems.add(link);
+  return link;
+}
+
+export async function updateTripItem(id: string, changes: { quantity?: number; note?: string }) {
+  const patch: Partial<TripItem> = {};
+  if (changes.quantity !== undefined) patch.quantity = Math.max(1, Math.floor(changes.quantity));
+  if (changes.note !== undefined) patch.note = changes.note;
+  await db.tripItems.update(id, patch);
+}
+
+export async function removeItemFromTrip(tripId: string, itemId: string): Promise<void> {
+  await db.tripItems.where('tripId').equals(tripId).filter((t) => t.itemId === itemId).delete();
 }
 
 /** Copies all items from one activity onto another (skips ones already there). */

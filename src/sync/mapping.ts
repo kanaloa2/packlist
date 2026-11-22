@@ -7,6 +7,7 @@ export const REMOTE_TABLE: Record<TableName, string> = {
   places: 'places',
   activities: 'activities',
   items: 'items',
+  tripItems: 'trip_items',
   activityItems: 'activity_items',
   packStatus: 'pack_status',
 };
@@ -18,6 +19,7 @@ export const COLUMNS: Record<TableName, readonly string[]> = {
   places: ['id', 'tripId', 'destinationId', 'type', 'address', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   activities: ['id', 'tripId', 'destinationId', 'placeId', 'name', 'description', 'photo', 'start', 'end', 'createdAt', 'updatedAt'],
   items: ['id', 'category', 'kind', 'countRule', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
+  tripItems: ['id', 'tripId', 'itemId', 'quantity', 'note', 'createdAt'],
   activityItems: ['id', 'tripId', 'activityId', 'itemId', 'quantity', 'note', 'createdAt'],
   packStatus: ['id', 'tripId', 'itemId', 'packed', 'quantity'],
 };
@@ -28,6 +30,7 @@ export const HAS_PHOTO: Record<TableName, boolean> = {
   places: true,
   activities: true,
   items: true,
+  tripItems: false,
   activityItems: false,
   packStatus: false,
 };

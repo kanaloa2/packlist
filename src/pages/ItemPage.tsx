@@ -35,15 +35,31 @@ export function ItemPage() {
       .sort((a, b) => b.activity.start.localeCompare(a.activity.start));
   }, [itemId]);
 
-  if (item === undefined || !usages) return null;
+  // Trips this item is added to as a whole (not via an activity).
+  const wholeTrips = useLiveQuery(async () => {
+    if (!itemId) return [];
+    const links = await db.tripItems.where('itemId').equals(itemId).toArray();
+    const trips = await db.trips.bulkGet(links.map((l) => l.tripId));
+    return links.map((l, i) => ({ link: l, trip: trips[i] })).filter((x): x is { link: typeof x.link; trip: Trip } => !!x.trip);
+  }, [itemId]);
+
+  if (item === undefined || !usages || !wholeTrips) return null;
   if (!item) return <NotFound what="Item" />;
 
-  // Group usages by trip.
-  const byTrip = new Map<string, Usage[]>();
+  // Group usages by trip, including trips it's on as a whole-trip item.
+  const byTrip = new Map<string, { name: string; usages: Usage[]; whole?: { quantity: number; note: string } }>();
   for (const u of usages) {
     const k = u.trip?.id ?? '';
-    byTrip.set(k, [...(byTrip.get(k) ?? []), u]);
+    const g = byTrip.get(k) ?? { name: u.trip?.name ?? 'Unknown trip', usages: [] };
+    g.usages.push(u);
+    byTrip.set(k, g);
   }
+  for (const { link, trip } of wholeTrips) {
+    const g = byTrip.get(trip.id) ?? { name: trip.name, usages: [] };
+    g.whole = { quantity: link.quantity, note: link.note };
+    byTrip.set(trip.id, g);
+  }
+  const uses = usages.length + wholeTrips.length;
 
   return (
     <div className="page">
@@ -63,9 +79,11 @@ export function ItemPage() {
             <button
               className="btn btn-danger btn-small"
               onClick={async () => {
-                const msg = usages.length
-                  ? `Delete “${item.name}”? It will be removed from ${usages.length} activit${usages.length === 1 ? 'y' : 'ies'}.`
-                  : `Delete “${item.name}”?`;
+                const where = [
+                  usages.length && `${usages.length} activit${usages.length === 1 ? 'y' : 'ies'}`,
+                  wholeTrips.length && `${wholeTrips.length} trip${wholeTrips.length === 1 ? '' : 's'}`,
+                ].filter(Boolean);
+                const msg = where.length ? `Delete “${item.name}”? It will be removed from ${where.join(' and ')}.` : `Delete “${item.name}”?`;
                 if (confirm(msg)) {
                   await deleteItem(item.id);
                   navigate('/items');
@@ -78,17 +96,30 @@ export function ItemPage() {
         }
       />
 
-      <SectionHeader title="Used on" count={usages.length} />
-      {usages.length === 0 ? (
-        <p className="muted">Not on any activity yet. Open an activity and tap “Add items” to use it.</p>
+      <SectionHeader title="Used on" count={uses} />
+      {uses === 0 ? (
+        <p className="muted">
+          Not used yet. Add it to an activity (“Add items”) or to a whole trip (“+ Whole trip” on the packing list).
+        </p>
       ) : (
-        [...byTrip.entries()].map(([tripId, list]) => (
+        [...byTrip.entries()].map(([tripId, g]) => (
           <section key={tripId} className="section">
             <h3 className="group-title">
-              <Link to={`/trips/${tripId}`}>{list[0].trip?.name ?? 'Unknown trip'}</Link>
+              <Link to={`/trips/${tripId}`}>{g.name}</Link>
             </h3>
             <ul className="activity-list card-list">
-              {list.map((u) => (
+              {g.whole && (
+                <li>
+                  <Link to={`/trips/${tripId}?tab=packing`} className="activity-row">
+                    <span className="activity-main">
+                      <span className="activity-name">Whole trip</span>
+                      <span className="muted small">Not tied to one activity{g.whole.note && ` · ${g.whole.note}`}</span>
+                    </span>
+                    {g.whole.quantity > 1 && <span className="pill">×{g.whole.quantity}</span>}
+                  </Link>
+                </li>
+              )}
+              {g.usages.map((u) => (
                 <li key={u.activity.id}>
                   <Link to={`/activities/${u.activity.id}`} className="activity-row">
                     <span className="activity-main">

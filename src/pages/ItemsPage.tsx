@@ -10,6 +10,7 @@ import { CATEGORY_ICONS, ITEM_CATEGORIES, type ItemCategory } from '../types';
 export function ItemsPage() {
   const items = useAllItems();
   const links = useLiveQuery(() => db.activityItems.toArray(), []);
+  const tripLinks = useLiveQuery(() => db.tripItems.toArray(), []);
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<ItemCategory | 'All'>('All');
@@ -23,8 +24,13 @@ export function ItemsPage() {
       u.trips.add(l.tripId);
       m.set(l.itemId, u);
     }
+    for (const l of tripLinks ?? []) {
+      const u = m.get(l.itemId) ?? { activities: 0, trips: new Set() };
+      u.trips.add(l.tripId);
+      m.set(l.itemId, u);
+    }
     return m;
-  }, [links]);
+  }, [links, tripLinks]);
 
   if (!items || !links) return null;
 
@@ -80,7 +86,7 @@ export function ItemsPage() {
                           <span className="muted small">
                             {i.kind && `${i.kind} · `}
                             {u
-                              ? `${u.activities} activit${u.activities === 1 ? 'y' : 'ies'} · ${u.trips.size} trip${u.trips.size === 1 ? '' : 's'}`
+                              ? [u.activities && `${u.activities} activit${u.activities === 1 ? 'y' : 'ies'}`, `${u.trips.size} trip${u.trips.size === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
                               : 'Not used yet'}
                             {i.description && ` · ${i.description}`}
                           </span>

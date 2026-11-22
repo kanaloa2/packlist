@@ -399,11 +399,11 @@ function ImportPreview({
       {tripOnly > 0 && (
         <details className="dv-notes">
           <summary>
-            {n(tripOnly, 'item is', 'items are')} linked to a trip but not to any of its activities
+            {n(tripOnly, 'item', 'items')} added to the whole trip
           </summary>
           <p className="small">
-            Packlist builds the packing list from activities, so these won’t appear on a packing list until you add them to
-            an activity. They’re still imported into your item library.
+            These are linked to a trip in Dataverse but to none of its activities, so they’re added to the trip as a whole
+            and appear on its packing list with a “Whole trip” tag.
           </p>
           <ul>
             {plan.tripOnlyItems.map((t) => (

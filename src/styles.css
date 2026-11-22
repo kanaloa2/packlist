@@ -1593,3 +1593,10 @@ input[type='password'] {
 .dv-advanced > .btn {
   margin-top: 0.5rem;
 }
+.usage-chip-trip {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.trip-level-note {
+  margin: 0.25rem 0 0.5rem;
+}

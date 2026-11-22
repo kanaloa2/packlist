@@ -119,6 +119,16 @@ export interface ActivityItem {
   createdAt: number;
 }
 
+/** Links an Item to a whole Trip rather than one Activity (passport, chargers…). */
+export interface TripItem {
+  id: string;
+  tripId: string;
+  itemId: string;
+  quantity: number;
+  note: string;
+  createdAt: number;
+}
+
 /** Whether an Item has been packed for a Trip. id = `${tripId}:${itemId}` */
 export interface PackStatus {
   id: string;

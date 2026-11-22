@@ -1,5 +1,5 @@
 import { db } from '../db';
-import type { Activity, ActivityItem, CountRule, Destination, Item, ItemCategory, PackStatus, Place, PlaceType, Trip } from '../types';
+import type { Activity, ActivityItem, CountRule, Destination, Item, ItemCategory, PackStatus, Place, PlaceType, Trip, TripItem } from '../types';
 import { buildPackingList } from '../lib/packing';
 import { resizeImage } from '../lib/photo';
 import { dvGet, dvGetAll, dvGetBlob, type DvDeps } from './api';
@@ -148,9 +148,11 @@ export interface Plan {
   activities: Activity[];
   items: Item[];
   activityItems: ActivityItem[];
+  /** Items linked to a trip in Dataverse but to none of its activities: added to the whole trip. */
+  tripItems: TripItem[];
   packStatus: (PackStatus & { count?: number })[];
   photos: PhotoJob[];
-  /** Items linked to a trip in Dataverse but to none of its activities (not on the packing list). */
+  /** Names of the whole-trip items, per trip, for the preview. */
   tripOnlyItems: { trip: string; items: string[] }[];
   warnings: string[];
 }
@@ -405,18 +407,21 @@ export async function buildPlan(src: Source, userId: string, now = Date.now()): 
     packStatus.push({ id: `${trip}:${item}`, tripId: trip, itemId: item, packed: r.cr282_packed === true, count });
   }
 
-  // --- Items tied to a trip but to none of its activities.
+  // --- Items tied to a trip but to none of its activities become whole-trip items.
   const onActivities = new Set(activityItems.map((l) => `${l.tripId}|${l.itemId}`));
   const tripOnly = new Map<string, Set<string>>();
-  const noteTripOnly = (t: string, i: string) => {
+  const tripItems: TripItem[] = [];
+  const addTripOnly = async (t: string, i: string) => {
     const trip = tripPk.get(t);
     const item = itemPk.get(i);
     if (!trip || !item || onActivities.has(`${trip}|${item}`)) return;
+    onActivities.add(`${trip}|${item}`); // once per trip
     if (!tripOnly.has(t)) tripOnly.set(t, new Set());
     tripOnly.get(t)!.add(title(itemById.get(i)!, 'Untitled item'));
+    tripItems.push({ id: await sid('tripItem', t, i), tripId: trip, itemId: item, quantity: 1, note: '', createdAt: now });
   };
-  for (const [t, i] of src.tripItems) noteTripOnly(t, i);
-  for (const key of latest.keys()) noteTripOnly(...(key.split('|') as [string, string]));
+  for (const [t, i] of src.tripItems) await addTripOnly(t, i);
+  for (const key of latest.keys()) await addTripOnly(...(key.split('|') as [string, string]));
   const tripOnlyItems = [...tripOnly].map(([t, names]) => ({ trip: title(tripById.get(t)!, 'Untitled trip'), items: [...names].sort() }));
 
   // The itinerary lists destinations and places in creation order: make that the order you'll
@@ -446,6 +451,7 @@ export async function buildPlan(src: Source, userId: string, now = Date.now()): 
     activities,
     items,
     activityItems,
+    tripItems,
     packStatus,
     photos: [...photoIds.values()],
     tripOnlyItems,
@@ -505,13 +511,14 @@ export async function applyPlan(
       return { ...r, ...(photo ? { photo } : {}), ...(old?.createdAt ? { createdAt: old.createdAt } : {}) };
     });
 
-  await db.transaction('rw', [db.trips, db.destinations, db.places, db.activities, db.items, db.activityItems, db.packStatus], async () => {
+  await db.transaction('rw', [db.trips, db.destinations, db.places, db.activities, db.items, db.tripItems, db.activityItems, db.packStatus], async () => {
     // Parents before children, so they reach the server in a valid order.
     await db.trips.bulkPut(keep(plan.trips, await db.trips.bulkGet(plan.trips.map((r) => r.id))));
     await db.destinations.bulkPut(keep(plan.destinations, await db.destinations.bulkGet(plan.destinations.map((r) => r.id))));
     await db.places.bulkPut(keep(plan.places, await db.places.bulkGet(plan.places.map((r) => r.id))));
     await db.activities.bulkPut(keep(plan.activities, await db.activities.bulkGet(plan.activities.map((r) => r.id))));
     await db.items.bulkPut(keep(plan.items, await db.items.bulkGet(plan.items.map((r) => r.id))));
+    await db.tripItems.bulkPut(plan.tripItems);
     await db.activityItems.bulkPut(plan.activityItems);
     // Counts from Dataverse are applied below; otherwise keep a count set by hand in Packlist.
     const oldStatus = await db.packStatus.bulkGet(plan.packStatus.map((r) => r.id));
@@ -527,15 +534,16 @@ export async function applyPlan(
     for (const trip of plan.trips) {
       const mine = counted.filter((s) => s.tripId === trip.id);
       if (!mine.length) continue;
-      const [destinations, places, activities, activityItems, packStatus] = await Promise.all([
+      const [destinations, places, activities, activityItems, tripItems, packStatus] = await Promise.all([
         db.destinations.where('tripId').equals(trip.id).toArray(),
         db.places.where('tripId').equals(trip.id).toArray(),
         db.activities.where('tripId').equals(trip.id).toArray(),
         db.activityItems.where('tripId').equals(trip.id).toArray(),
+        db.tripItems.where('tripId').equals(trip.id).toArray(),
         db.packStatus.where('tripId').equals(trip.id).toArray(),
       ]);
-      const items = (await db.items.bulkGet([...new Set(activityItems.map((l) => l.itemId))])).filter((i): i is Item => !!i);
-      const auto = new Map(buildPackingList({ trip, destinations, places, activities, activityItems, items, packStatus }).map((e) => [e.item.id, e.autoQuantity]));
+      const items = (await db.items.bulkGet([...new Set([...activityItems, ...tripItems].map((l) => l.itemId))])).filter((i): i is Item => !!i);
+      const auto = new Map(buildPackingList({ trip, destinations, places, activities, activityItems, tripItems, items, packStatus }).map((e) => [e.item.id, e.autoQuantity]));
       for (const s of mine) {
         if (auto.has(s.itemId) && auto.get(s.itemId) !== s.count) overrides.push({ id: s.id, tripId: s.tripId, itemId: s.itemId, packed: s.packed, quantity: s.count! });
       }

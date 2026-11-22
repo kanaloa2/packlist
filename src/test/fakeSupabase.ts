@@ -5,6 +5,7 @@ const FKS: Record<string, [string, string][]> = {
   destinations: [['trip_id', 'trips']],
   places: [['trip_id', 'trips'], ['destination_id', 'destinations']],
   activities: [['trip_id', 'trips'], ['destination_id', 'destinations'], ['place_id', 'places']],
+  trip_items: [['trip_id', 'trips'], ['item_id', 'items']],
   activity_items: [['trip_id', 'trips'], ['activity_id', 'activities'], ['item_id', 'items']],
   pack_status: [['trip_id', 'trips'], ['item_id', 'items']],
 };

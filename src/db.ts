@@ -3,6 +3,7 @@ import type {
   Activity,
   ActivityItem,
   Destination,
+  TripItem,
   Item,
   PackStatus,
   Place,
@@ -16,6 +17,7 @@ export class PacklistDB extends Dexie {
   activities!: EntityTable<Activity, 'id'>;
   items!: EntityTable<Item, 'id'>;
   activityItems!: EntityTable<ActivityItem, 'id'>;
+  tripItems!: EntityTable<TripItem, 'id'>;
   packStatus!: EntityTable<PackStatus, 'id'>;
   /** Local changes waiting to be pushed to the server, in the order they happened. */
   outbox!: EntityTable<OutboxEntry, 'seq'>;
@@ -39,6 +41,9 @@ export class PacklistDB extends Dexie {
       outbox: '++seq',
       photoCache: 'path',
       meta: 'key',
+    });
+    this.version(3).stores({
+      tripItems: 'id, tripId, itemId',
     });
   }
 }
@@ -67,6 +72,7 @@ export const ALL_TABLES = [
   'places',
   'activities',
   'items',
+  'tripItems',
   'activityItems',
   'packStatus',
 ] as const;

@@ -17,9 +17,10 @@ Trip (start & end dates)
 - **Every object** (trip, destination, place, activity, item) can have a **photo** and a **description**.
 - **Items** live in a shared library. On any activity you can **select** an existing item or **create** a new one on the spot. Items already used on the current trip are listed first.
 - **Item types.** Items can have a type such as Shirts, Pants, Jackets & coats, Shoes or Accessories, or one you type yourself (it's then offered for future items). New items get a suggested type from their name ("Navy blazer" → Jackets & coats).
-- **The packing list** for a trip collects every item from every activity:
-  - Group it by **category**, by **type**, by the **day** an item is first needed, or by **destination**. When grouping by type, items without a type fall back to their category.
-  - Each item shows **every activity it's used on** as a tappable chip with the day and time, so you can see which other activities that jacket or shirt is worn on. Turn off **Show activities** for a compact list. The Share/copy text includes the activities too.
+- **Whole-trip items.** Some things belong to the trip rather than one activity, like a passport, chargers or medications. Tap **+ Whole trip** on a trip's packing list to add them. It uses the same picker as activities: search the library or create new items on the spot. A trip with no activities yet can still have a packing list this way.
+- **The packing list** for a trip collects every item from every activity, plus its whole-trip items:
+  - Group it by **category**, by **type**, by the **day** an item is first needed, or by **destination**. When grouping by type, items without a type fall back to their category. The Day and Destination views start with a **Whole trip** group.
+  - Each item shows **every activity it's used on** as a tappable chip with the day and time (plus a **Whole trip** chip if it's on the whole trip), so you can see which other activities that jacket or shirt is worn on. Turn off **Show activities** for a compact list. The Share/copy text includes the activities too.
   - Check items off as you pack, hide packed items, mark everything packed at once, share or copy the list as text, or print it.
   - Tap an item to set how many to pack and to see each activity's place, time and notes.
   - **How many to pack.** Each item has a counting setting:
@@ -58,10 +59,11 @@ It's built for the **PackList** Dataverse app (tables prefixed `cr282_packlist_`
 | PackList_Activity (→ Place, → Trip, Start, Stop) | Activity. No stop time means 1 hour. No trip link: inferred from the destination if it's on exactly one trip, otherwise skipped. |
 | PackList_Item (Title, Type, Image) | Item. Shirt → Shirts, Pants → Pants, Shoes → Shoes, Socks/Underwear → one per day, Jacket → Jackets & coats, Accessory → Accessories. |
 | Item ⇄ Activity (both relationships) | Items on activities |
+| Item ⇄ Trip, and ItemCount rows, for items on none of that trip's activities | Whole-trip items |
 | PackList_ItemCount (Trip, Item, Count, Packed) | Packed tick, plus a manual count where Count differs from Packlist's automatic count |
 
 - Only active records are imported.
-- The preview lists anything skipped or adjusted, and items linked to a trip but to none of its activities. Those go into the item library but not onto a packing list, because packing lists are built from activities.
+- The preview lists anything skipped or adjusted, and which items become whole-trip items.
 - **Importing again updates the same records** instead of creating copies, because record IDs are derived from the Dataverse IDs.
   - A photo added in Packlist is kept if the Dataverse record has none.
   - A count set by hand is kept unless Dataverse has a count for that item.

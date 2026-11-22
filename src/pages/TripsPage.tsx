@@ -21,13 +21,15 @@ export function TripsPage() {
   const [creating, setCreating] = useState(false);
 
   const summaries = useLiveQuery(async (): Promise<TripSummary[]> => {
-    const [trips, dests, acts, links, statuses] = await Promise.all([
+    const [trips, dests, acts, activityLinks, tripLinks, statuses] = await Promise.all([
       db.trips.orderBy('startDate').toArray(),
       db.destinations.toArray(),
       db.activities.toArray(),
       db.activityItems.toArray(),
+      db.tripItems.toArray(),
       db.packStatus.toArray(),
     ]);
+    const links = [...activityLinks, ...tripLinks];
     return trips.map((trip) => {
       const itemIds = new Set(links.filter((l) => l.tripId === trip.id).map((l) => l.itemId));
       const packed = statuses.filter((s) => s.tripId === trip.id && s.packed && itemIds.has(s.itemId)).length;

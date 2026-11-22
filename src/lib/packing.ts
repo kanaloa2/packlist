@@ -1,6 +1,7 @@
 import type { Activity, ActivityItem, CountRule, Destination, Item, PackStatus, Place, Trip } from '../types';
 import { ITEM_CATEGORIES } from '../types';
 import { datePart, dayCount, formatDayHeading } from './dates';
+import { typeLabel, typeRank } from './itemTypes';
 
 export interface ItemUsage {
   activity: Activity;
@@ -32,7 +33,7 @@ export interface PackingGroup {
   entries: PackingEntry[];
 }
 
-export type GroupBy = 'category' | 'destination' | 'day';
+export type GroupBy = 'category' | 'type' | 'destination' | 'day';
 
 export interface PackingInput {
   /** Needed for "one per day" items; without it they fall back to the whole-trip count. */
@@ -133,6 +134,10 @@ export function groupPackingList(
   for (const e of entries) {
     if (groupBy === 'category') {
       add(e.item.category, e.item.category, e);
+    } else if (groupBy === 'type') {
+      // Untyped items fall back to their category; "Shoes" the type and "Shoes" the category share a group.
+      const label = typeLabel(e.item);
+      add(label.toLowerCase(), groups.get(label.toLowerCase())?.label ?? label, e);
     } else if (groupBy === 'day') {
       const day = datePart(e.firstNeeded);
       add(day, `First needed ${formatDayHeading(day)}`, e);
@@ -151,6 +156,12 @@ export function groupPackingList(
   if (groupBy === 'category') {
     const order = ITEM_CATEGORIES as readonly string[];
     list.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  } else if (groupBy === 'type') {
+    list.sort((a, b) => {
+      const [ra, na] = typeRank(a.label);
+      const [rb, nb] = typeRank(b.label);
+      return ra - rb || na.localeCompare(nb);
+    });
   } else if (groupBy === 'day') {
     list.sort((a, b) => a.key.localeCompare(b.key));
   } else {
@@ -184,7 +195,8 @@ export function packingListToText(tripName: string, groups: PackingGroup[]): str
   for (const g of groups) {
     lines.push(g.label.toUpperCase());
     for (const e of g.entries) {
-      lines.push(`${e.packed ? '☑' : '☐'} ${e.item.name}${e.quantity > 1 ? ` ×${e.quantity}` : ''}`);
+      const uses = [...new Set(e.usages.map((u) => u.activity.name))].join(', ');
+      lines.push(`${e.packed ? '☑' : '☐'} ${e.item.name}${e.quantity > 1 ? ` ×${e.quantity}` : ''} — ${uses}`);
     }
     lines.push('');
   }

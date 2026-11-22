@@ -325,6 +325,7 @@ export async function deleteActivity(id: string): Promise<void> {
 export interface ItemInput extends Common {
   category: ItemCategory;
   countRule?: CountRule;
+  kind?: string;
 }
 
 export async function createItem(input: ItemInput): Promise<Item> {
@@ -336,6 +337,7 @@ export async function createItem(input: ItemInput): Promise<Item> {
     photo: input.photo,
     category: input.category,
     countRule: input.countRule ?? 'trip',
+    kind: (input.kind ?? '').trim(),
     ...stamp(),
   };
   await db.items.add(item);
@@ -350,6 +352,7 @@ export async function updateItem(id: string, input: ItemInput): Promise<void> {
     photo: input.photo,
     category: input.category,
     countRule: input.countRule ?? 'trip',
+    kind: (input.kind ?? '').trim(),
     updatedAt: Date.now(),
   });
 }

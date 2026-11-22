@@ -4,7 +4,7 @@ import { fromRemote, toRemote } from './mapping';
 describe('mapping', () => {
   it('maps fields to snake_case and fills required defaults for older rows', () => {
     const r = toRemote('items', { id: 'i1', name: 'Socks', category: 'Clothing', description: '', createdAt: 1, updatedAt: 2 });
-    expect(r).toMatchObject({ id: 'i1', count_rule: 'trip', photo: null, created_at: 1, updated_at: 2 });
+    expect(r).toMatchObject({ id: 'i1', count_rule: 'trip', kind: '', photo: null, created_at: 1, updated_at: 2 });
     expect(r).not.toHaveProperty('user_id');
   });
 

@@ -51,7 +51,7 @@ export function ItemPage() {
       <Hero
         photo={item.photo}
         icon={CATEGORY_ICONS[item.category]}
-        kicker={item.category}
+        kicker={item.kind ? `${item.category} · ${item.kind}` : item.category}
         title={item.name}
         subtitle={`Packing count: ${COUNT_RULE_LABELS[item.countRule ?? 'trip'].toLowerCase()}`}
         description={item.description}

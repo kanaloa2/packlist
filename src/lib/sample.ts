@@ -1,6 +1,7 @@
 import * as repo from './repo';
 import { db } from '../db';
 import { defaultCountRule } from './counts';
+import { suggestKind } from './itemTypes';
 import { shiftYmd, todayYmd } from './dates';
 import type { ItemCategory } from '../types';
 
@@ -21,7 +22,7 @@ export async function createSampleTrip(): Promise<string> {
     if (!items.has(name)) {
       // Reuse an existing library item with the same name, so loading the sample twice doesn't duplicate it.
       const existing = await db.items.filter((i) => i.name.toLowerCase() === name.toLowerCase()).first();
-      items.set(name, existing?.id ?? (await repo.createItem({ name, category, description, countRule: defaultCountRule(name, category) })).id);
+      items.set(name, existing?.id ?? (await repo.createItem({ name, category, description, countRule: defaultCountRule(name, category), kind: suggestKind(name) })).id);
     }
     return items.get(name)!;
   };

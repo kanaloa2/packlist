@@ -17,7 +17,7 @@ export const COLUMNS: Record<TableName, readonly string[]> = {
   destinations: ['id', 'tripId', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   places: ['id', 'tripId', 'destinationId', 'type', 'address', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   activities: ['id', 'tripId', 'destinationId', 'placeId', 'name', 'description', 'photo', 'start', 'end', 'createdAt', 'updatedAt'],
-  items: ['id', 'category', 'countRule', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
+  items: ['id', 'category', 'kind', 'countRule', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   activityItems: ['id', 'tripId', 'activityId', 'itemId', 'quantity', 'note', 'createdAt'],
   packStatus: ['id', 'tripId', 'itemId', 'packed', 'quantity'],
 };
@@ -51,7 +51,7 @@ export function toRemote(table: TableName, row: Row): Row {
 }
 
 /** Values for NOT NULL columns that older local rows may not have. */
-const DEFAULTS: Record<string, unknown> = { countRule: 'trip' };
+const DEFAULTS: Record<string, unknown> = { countRule: 'trip', kind: '' };
 
 /** Postgres row → local row. */
 export function fromRemote(table: TableName, row: Row): Row {
@@ -60,7 +60,7 @@ export function fromRemote(table: TableName, row: Row): Row {
     const v = row[toSnake(k)];
     if (v === null || v === undefined) {
       if (k === 'photo') continue; // absent photo = no property, as created locally
-      out[k] = k === 'description' || k === 'note' || k === 'address' ? '' : v;
+      out[k] = k === 'description' || k === 'note' || k === 'address' || k === 'kind' ? '' : v;
     } else {
       out[k] = v;
     }

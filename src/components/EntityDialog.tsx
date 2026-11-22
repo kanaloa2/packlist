@@ -17,7 +17,9 @@ export type FieldDef =
       labels?: Record<string, string>;
       hint?: string;
     }
-  | { key: string; label: string; type: 'photo' };
+  | { key: string; label: string; type: 'photo' }
+  /** Pick one of `options` as a chip, or type your own value. */
+  | { key: string; label: string; type: 'combo'; options: readonly string[]; placeholder?: string; hint?: string };
 
 export type Values = Record<string, string | undefined>;
 
@@ -110,6 +112,46 @@ function EntityForm({
                   {fieldError(f.key)}
                 </div>
               );
+            case 'combo': {
+              const lower = v.trim().toLowerCase();
+              return (
+                <div className="field" key={f.key}>
+                  <span className="label" id={`${id}-label`}>
+                    {f.label}
+                  </span>
+                  <div className="chips chips-wrap" role="radiogroup" aria-labelledby={`${id}-label`}>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={!lower}
+                      className={`chip${!lower ? ' active' : ''}`}
+                      onClick={() => set(f.key, '')}
+                    >
+                      None
+                    </button>
+                    {f.options.map((o) => {
+                      const on = o.toLowerCase() === lower;
+                      return (
+                        <button key={o} type="button" role="radio" aria-checked={on} className={`chip${on ? ' active' : ''}`} onClick={() => set(f.key, o)}>
+                          {o}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input
+                    id={id}
+                    type="text"
+                    value={v}
+                    placeholder={f.placeholder}
+                    aria-label={`${f.label} (type your own)`}
+                    maxLength={60}
+                    onChange={(e) => set(f.key, e.target.value)}
+                  />
+                  {f.hint && <p className="hint">{f.hint}</p>}
+                  {fieldError(f.key)}
+                </div>
+              );
+            }
             case 'select':
               return (
                 <div className="field" key={f.key}>

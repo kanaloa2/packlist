@@ -30,7 +30,7 @@ export function ItemsPage() {
 
   const q = query.trim().toLowerCase();
   const filtered = items.filter(
-    (i) => (category === 'All' || i.category === category) && (!q || i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q)),
+    (i) => (category === 'All' || i.category === category) && (!q || i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q) || (i.kind ?? '').toLowerCase().includes(q)),
   );
   const groups = ITEM_CATEGORIES.map((c) => ({ c, list: filtered.filter((i) => i.category === c) })).filter((g) => g.list.length);
 
@@ -78,6 +78,7 @@ export function ItemsPage() {
                         <span>
                           <span className="item-name">{i.name}</span>
                           <span className="muted small">
+                            {i.kind && `${i.kind} · `}
                             {u
                               ? `${u.activities} activit${u.activities === 1 ? 'y' : 'ies'} · ${u.trips.size} trip${u.trips.size === 1 ? '' : 's'}`
                               : 'Not used yet'}

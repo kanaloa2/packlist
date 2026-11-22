@@ -16,15 +16,18 @@ Trip (start & end dates)
 
 - **Every object** (trip, destination, place, activity, item) can have a **photo** and a **description**.
 - **Items** live in a shared library. On any activity you can **select** an existing item or **create** a new one on the spot. Items already used on the current trip are listed first.
+- **Item types.** Items can have a type such as Shirts, Pants, Jackets & coats, Shoes or Accessories, or one you type yourself (it's then offered for future items). New items get a suggested type from their name ("Navy blazer" → Jackets & coats).
 - **The packing list** for a trip collects every item from every activity:
-  - Group it by **category**, by the **day** an item is first needed, or by **destination**.
+  - Group it by **category**, by **type**, by the **day** an item is first needed, or by **destination**. When grouping by type, items without a type fall back to their category.
+  - Each item shows **every activity it's used on** as a tappable chip with the day and time, so you can see which other activities that jacket or shirt is worn on. Turn off **Show activities** for a compact list. The Share/copy text includes the activities too.
   - Check items off as you pack, hide packed items, mark everything packed at once, share or copy the list as text, or print it.
-  - Tap an item to see which activities need it.
+  - Tap an item to set how many to pack and to see each activity's place, time and notes.
   - **How many to pack.** Each item has a counting setting:
     - **Same for the whole trip** (default): your black jeans on three activities is still one pair. It uses the largest quantity any single activity asks for.
     - **One per day of the trip**: for socks and underwear. A 6-day trip packs 6, a 3-day trip packs 3. New items named like socks, underwear or t-shirts get this setting automatically.
     - **One per activity**: adds up the quantities across activities.
   - **Change the count for one trip.** Tap an item on the packing list and use **Pack for this trip** to set your own number, for example 4 pairs of socks instead of 6. It only affects that trip, survives ticking the item as packed, and **Use automatic** puts it back.
+- **Activity pages** show, under each item, the other activities on the trip that use it.
 - **Schedule** view shows the trip day by day.
 - **Duplicate** a trip to reuse its whole itinerary on new dates. **Copy items** from one activity to another.
 - Activity times are validated against the trip's dates. A trip's dates can't be changed in a way that would leave activities outside the trip.

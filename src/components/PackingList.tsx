@@ -10,12 +10,15 @@ import {
   type PackingEntry,
 } from '../lib/packing';
 import { setAllPacked, setPackQuantity, setPacked } from '../lib/repo';
-import { formatActivityTime } from '../lib/dates';
+import { formatActivityTime, formatChipTime } from '../lib/dates';
 import { CATEGORY_ICONS } from '../types';
+import { typeLabel } from '../lib/itemTypes';
 import { Empty, ProgressBar, Thumb } from './ui';
 
 const GROUP_KEY = 'packlist.groupBy';
 const HIDE_KEY = 'packlist.hidePacked';
+const ACTS_KEY = 'packlist.showActivities';
+const GROUP_LABELS: Record<GroupBy, string> = { category: 'Category', type: 'Type', day: 'Day', destination: 'Destination' };
 
 function readPref(key: string, fallback: string) {
   try {
@@ -35,6 +38,7 @@ function writePref(key: string, value: string) {
 export function PackingList({ data }: { data: TripData }) {
   const [groupBy, setGroupBy] = useState<GroupBy>(() => readPref(GROUP_KEY, 'category') as GroupBy);
   const [hidePacked, setHidePacked] = useState(() => readPref(HIDE_KEY, '0') === '1');
+  const [showActivities, setShowActivities] = useState(() => readPref(ACTS_KEY, '1') === '1');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -82,7 +86,7 @@ export function PackingList({ data }: { data: TripData }) {
 
       <div className="packing-toolbar no-print">
         <div className="segmented" role="radiogroup" aria-label="Group by">
-          {(['category', 'day', 'destination'] as GroupBy[]).map((g) => (
+          {(['category', 'type', 'day', 'destination'] as GroupBy[]).map((g) => (
             <button
               key={g}
               role="radio"
@@ -93,7 +97,7 @@ export function PackingList({ data }: { data: TripData }) {
                 writePref(GROUP_KEY, g);
               }}
             >
-              {g === 'category' ? 'Category' : g === 'day' ? 'Day' : 'Destination'}
+              {GROUP_LABELS[g]}
             </button>
           ))}
         </div>
@@ -107,6 +111,17 @@ export function PackingList({ data }: { data: TripData }) {
             }}
           />
           Hide packed
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showActivities}
+            onChange={(e) => {
+              setShowActivities(e.target.checked);
+              writePref(ACTS_KEY, e.target.checked ? '1' : '0');
+            }}
+          />
+          Show activities
         </label>
         <div className="toolbar-actions">
           <button className="btn btn-small btn-ghost" onClick={copy}>
@@ -147,7 +162,8 @@ export function PackingList({ data }: { data: TripData }) {
                     key={e.item.id}
                     entry={e}
                     tripId={data.trip.id}
-                    showCategory={groupBy !== 'category'}
+                    groupBy={groupBy}
+                    showActivities={showActivities}
                     expanded={expanded === `${g.key}:${e.item.id}`}
                     onToggleExpand={() => setExpanded((x) => (x === `${g.key}:${e.item.id}` ? null : `${g.key}:${e.item.id}`))}
                   />
@@ -164,18 +180,22 @@ export function PackingList({ data }: { data: TripData }) {
 function PackingRow({
   entry,
   tripId,
-  showCategory,
+  groupBy,
+  showActivities,
   expanded,
   onToggleExpand,
 }: {
   entry: PackingEntry;
   tripId: string;
-  showCategory: boolean;
+  groupBy: GroupBy;
+  showActivities: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
 }) {
   const { item, quantity, autoQuantity, manual, reason, usages, packed } = entry;
-  const uses = [...new Set(usages.map((u) => u.activity.name))];
+  // What kind of thing this is, unless the group heading already says so.
+  const kindText = groupBy === 'type' ? (item.kind ? item.category : '') : groupBy === 'category' ? item.kind ?? '' : typeLabel(item);
+  const summary = `${usages.length} activit${usages.length === 1 ? 'y' : 'ies'}`;
   return (
     <li className={`packing-item${packed ? ' packed' : ''}`}>
       <div className="packing-row">
@@ -195,11 +215,26 @@ function PackingRow({
             )}
           </span>
           <span className="muted small">
-            {showCategory && `${item.category} · `}
-            {uses.join(', ')}
+            {[kindText, showActivities ? '' : summary].filter(Boolean).join(' · ')}
           </span>
         </button>
       </div>
+      {showActivities && (
+        <ul className="usage-chips" aria-label={`Activities using ${item.name}`}>
+          {usages.map((u, i) => (
+            <li key={i}>
+              <Link
+                to={`/activities/${u.activity.id}`}
+                className="usage-chip"
+                title={`${u.activity.name} · ${u.place?.name ?? ''} · ${formatActivityTime(u.activity.start, u.activity.end)}`}
+              >
+                {u.activity.name}
+                <span className="usage-when">{formatChipTime(u.activity.start)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
       {expanded && (
         <div className="packing-detail">
           <div className="count-control">

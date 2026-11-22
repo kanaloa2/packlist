@@ -13,7 +13,7 @@ import {
   removeActivityItem,
   updateActivityItem,
 } from '../lib/repo';
-import { formatActivityTime } from '../lib/dates';
+import { formatActivityTime, formatChipTime } from '../lib/dates';
 import { CATEGORY_ICONS, ITEM_CATEGORIES, PLACE_ICONS, type Activity, type ActivityItem, type Item, type ItemCategory } from '../types';
 
 export function ActivityPage() {
@@ -36,6 +36,14 @@ export function ActivityPage() {
   const place = data.places.find((p) => p.id === activity.placeId);
   const dest = data.destinations.find((d) => d.id === activity.destinationId);
   const itemsById = new Map(allItems.map((i) => [i.id, i]));
+  // For each item here, the other activities on this trip that use it too.
+  const actById = new Map(data.activities.map((a) => [a.id, a]));
+  const alsoOn = (itemId: string) =>
+    data.activityItems
+      .filter((l) => l.itemId === itemId && l.activityId !== activity.id)
+      .map((l) => actById.get(l.activityId))
+      .filter((a): a is Activity => !!a)
+      .sort((a, b) => a.start.localeCompare(b.start));
   const rows = links
     .map((l) => ({ link: l, item: itemsById.get(l.itemId) }))
     .filter((r): r is { link: ActivityItem; item: Item } => !!r.item)
@@ -115,7 +123,7 @@ export function ActivityPage() {
                 <Thumb photo={item.photo} icon={CATEGORY_ICONS[item.category]} />
                 <span>
                   <span className="item-name">{item.name}</span>
-                  <span className="muted small">{item.category}</span>
+                  <span className="muted small">{item.kind || item.category}</span>
                 </span>
               </Link>
               <div className="item-controls">
@@ -136,6 +144,17 @@ export function ActivityPage() {
                   ✕
                 </button>
               </div>
+              {alsoOn(item.id).length > 0 && (
+                <p className="also-on small">
+                  <span className="muted">Also on this trip:</span>{' '}
+                  {alsoOn(item.id).map((a, i) => (
+                    <span key={a.id}>
+                      {i > 0 && ', '}
+                      <Link to={`/activities/${a.id}`}>{a.name}</Link> <span className="muted">{formatChipTime(a.start)}</span>
+                    </span>
+                  ))}
+                </p>
+              )}
               <NoteInput link={link} />
             </li>
           ))}

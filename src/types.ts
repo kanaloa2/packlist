@@ -66,7 +66,6 @@ export const ITEM_CATEGORIES = [
 ] as const;
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
-/** An Item lives in a shared library so it can be selected on any Activity of any Trip. */
 export const COUNT_RULES = ['trip', 'perDay', 'perActivity'] as const;
 /**
  * How many of an item a trip's packing list asks for, before any manual change:
@@ -82,8 +81,29 @@ export const COUNT_RULE_LABELS: Record<CountRule, string> = {
   perActivity: 'One per activity',
 };
 
+/** Suggested item types; users can also type their own. */
+export const ITEM_TYPES = [
+  'Shirts',
+  'Pants',
+  'Shorts',
+  'Dresses & skirts',
+  'Jackets & coats',
+  'Sweaters',
+  'Shoes',
+  'Socks',
+  'Underwear',
+  'Sleepwear',
+  'Swimwear',
+  'Accessories',
+  'Hats',
+  'Bags',
+] as const;
+
+/** An Item lives in a shared library so it can be selected on any Activity of any Trip. */
 export interface Item extends BaseEntity {
   category: ItemCategory;
+  /** Optional finer type, e.g. "Jackets & coats" or anything the user types. '' or missing = none. */
+  kind?: string;
   /** Missing on items created before this existed; treated as 'trip'. */
   countRule?: CountRule;
 }

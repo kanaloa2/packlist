@@ -1446,3 +1446,57 @@ input[type='password'] {
 .count-reason .link-btn {
   font-size: inherit;
 }
+
+.chips-wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+/* ---------- Activity chips on the packing list ---------- */
+
+.usage-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.75rem 0.6rem 5.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.usage-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+.usage-chip:hover {
+  text-decoration: none;
+  outline: 1px solid var(--accent);
+}
+.usage-when {
+  font-weight: 500;
+  color: var(--muted);
+}
+.packing-item.packed .usage-chip {
+  opacity: 0.6;
+}
+@media print {
+  .usage-chips {
+    padding-left: 2.5rem;
+  }
+  .usage-chip {
+    background: none;
+    padding: 0;
+    color: inherit;
+  }
+}
+.also-on {
+  flex-basis: 100%;
+  margin: 0;
+  line-height: 1.5;
+}

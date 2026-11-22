@@ -1,6 +1,9 @@
 import { EntityDialog, type FieldDef, type Values } from './EntityDialog';
 import * as repo from '../lib/repo';
 import { defaultCountRule } from '../lib/counts';
+import { suggestKind, typeOptions } from '../lib/itemTypes';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 export { defaultCountRule };
 import { formatDate, shiftYmd, todayYmd } from '../lib/dates';
@@ -200,6 +203,8 @@ export function ItemDialog({
   defaultName = '',
   defaultCategory = 'Clothing',
 }: Base<Item> & { defaultName?: string; defaultCategory?: ItemCategory }) {
+  const library = useLiveQuery(() => db.items.toArray(), []);
+  const kinds = typeOptions(library ?? []);
   return (
     <EntityDialog
       open={open}
@@ -209,6 +214,14 @@ export function ItemDialog({
       fields={[
         { key: 'name', label: 'Item', type: 'text', required: true, placeholder: 'Black blazer', autoFocus: true },
         { key: 'category', label: 'Category', type: 'select', options: ITEM_CATEGORIES, icons: CATEGORY_ICONS },
+        {
+          key: 'kind',
+          label: 'Type',
+          type: 'combo',
+          options: kinds,
+          placeholder: 'Or type your own, e.g. Workout gear',
+          hint: 'Optional. Lets you group the packing list by type: shirts together, jackets together…',
+        },
         {
           key: 'countRule',
           label: 'How many to pack',
@@ -222,15 +235,27 @@ export function ItemDialog({
       ]}
       initial={
         existing
-          ? { ...existing, countRule: existing.countRule ?? 'trip' }
-          : { name: defaultName, description: '', category: defaultCategory, countRule: defaultCountRule(defaultName, defaultCategory) }
+          ? {
+              ...existing,
+              countRule: existing.countRule ?? 'trip',
+              // Items made before types existed get a suggestion they can keep or clear.
+              kind: existing.kind || suggestKind(existing.name),
+            }
+          : {
+              name: defaultName,
+              description: '',
+              category: defaultCategory,
+              kind: suggestKind(defaultName),
+              countRule: defaultCountRule(defaultName, defaultCategory),
+            }
       }
-      onValuesChange={existing ? undefined : suggestCountRule}
+      onValuesChange={existing ? undefined : suggestFromName}
       onSubmit={async (v) => {
         const input = {
           ...common(v),
           category: (v.category ?? 'Other') as ItemCategory,
           countRule: (v.countRule ?? 'trip') as CountRule,
+          kind: v.kind ?? '',
         };
         if (existing) {
           await repo.updateItem(existing.id, input);
@@ -254,4 +279,15 @@ function suggestCountRule(next: Values, prev: Values): Values {
   const userChangedRule = next.countRule !== prev.countRule;
   const ruleWasSuggested = prev.countRule === ruleFor(prev);
   return !userChangedRule && ruleWasSuggested ? { ...next, countRule: ruleFor(next) } : next;
+}
+
+/** Same idea for the type: "Navy blazer" → Jackets & coats, until the user picks a type. */
+function suggestKindFromName(next: Values, prev: Values): Values {
+  const userChangedKind = next.kind !== prev.kind;
+  const kindWasSuggested = (prev.kind ?? '') === suggestKind(prev.name ?? '');
+  return !userChangedKind && kindWasSuggested ? { ...next, kind: suggestKind(next.name ?? '') } : next;
+}
+
+function suggestFromName(next: Values, prev: Values): Values {
+  return suggestKindFromName(suggestCountRule(next, prev), prev);
 }

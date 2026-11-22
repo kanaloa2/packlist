@@ -119,3 +119,9 @@ export function shiftYmd(ymd: string, days: number): string {
   const dt = new Date(y, m - 1, d + days);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
+
+/** Short "Sat 7:30 PM" label for an activity start. */
+export function formatChipTime(value: string): string {
+  const d = parseLocalDateTime(value);
+  return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${formatTime(value)}`;
+}

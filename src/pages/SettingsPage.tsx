@@ -5,6 +5,7 @@ import { db } from '../db';
 import { deleteAllData, exportBackup, importBackup, parseBackup } from '../lib/backup';
 import { useAuth } from '../auth/AuthGate';
 import { Modal } from '../components/Modal';
+import { DataversePanel } from '../dataverse/DataversePanel';
 import { supabase } from '../supabase';
 import { sync, useSyncStatus } from '../sync';
 import { createSampleTrip } from '../lib/sample';
@@ -105,6 +106,8 @@ export function SettingsPage() {
           </p>
         )}
       </section>
+
+      <DataversePanel />
 
       <section className="panel">
         <h2>Sample trip</h2>

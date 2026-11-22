@@ -44,6 +44,21 @@ Trip (start & end dates)
 
 If the same thing is edited on two devices while one of them is offline, the last change to reach the server wins.
 
+## Importing from Dataverse
+
+**Settings → Import from Dataverse** connects to a Microsoft Dataverse environment through the Dataverse Web API, using Microsoft sign-in (MSAL, authorization code flow with PKCE). Packlist reads only what the signed-in Microsoft account is allowed to read, and nothing is sent anywhere except Microsoft.
+
+Right now the panel does the first step: sign in, pick the tables that hold your trips, and copy their structure (columns, types, links, choice values; no row data) so the importer can be matched to your tables. The import itself comes next.
+
+**One-time setup in Microsoft Entra ID** (a tenant admin does this once):
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com), go to **App registrations → New registration**.
+   - Name: `Packlist`
+   - Supported account types: **Accounts in this organizational directory only**
+   - Redirect URI: platform **Single-page application (SPA)**, address `https://kanaloa2.github.io/packlist/auth-redirect.html`
+2. On the app's **API permissions** page, choose **Add a permission → Dynamics CRM → Delegated permissions → user_impersonation**, then **Grant admin consent**.
+3. Copy the **Application (client) ID** and **Directory (tenant) ID** from the **Overview** page into the Packlist panel. They're identifiers, not secrets. Don't create a client secret; a browser app can't keep one safe and doesn't need one.
+
 ## Development
 
 ```bash
@@ -74,4 +89,6 @@ The Supabase project URL and publishable key are in `src/supabase.ts`. They're p
 | `src/sync/engine.ts` | Offline-first sync: change queue, push, pull, photo upload/download, live updates |
 | `src/sync/mapping.ts` | Local ⇄ Postgres field mapping |
 | `supabase/migrations/` | Postgres schema, RLS policies, storage bucket and policies |
+| `src/dataverse/` | Microsoft sign-in, Dataverse Web API client, and the Settings panel |
+| `auth-redirect.html` | The page Microsoft's sign-in popup returns to; hands the result to the app |
 | `src/pages/*` | Screens: trips, trip, destination, place, activity, items, item, settings |

@@ -1500,3 +1500,31 @@ input[type='password'] {
   margin: 0;
   line-height: 1.5;
 }
+
+/* ---------- Dataverse ---------- */
+
+.dv-form {
+  margin-top: 0.75rem;
+}
+.dv-tables,
+.dv-summary {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+.dv-table-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.dv-table-list .muted {
+  margin-left: 0.25rem;
+}
+.dv-output {
+  margin-top: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}

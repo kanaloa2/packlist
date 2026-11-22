@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/kanaloa2/packlist#readme",
   "dependencies": {
+    "@azure/msal-browser": "^5.29.0",
     "@supabase/supabase-js": "^2.119.0",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",

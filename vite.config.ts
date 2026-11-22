@@ -8,11 +8,21 @@ const base = process.env.BASE_PATH || '/';
 
 export default defineConfig({
   base,
+  build: {
+    rollupOptions: {
+      // auth-redirect.html is the tiny page Microsoft's sign-in popup returns to.
+      input: { main: 'index.html', authRedirect: 'auth-redirect.html' },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
+      workbox: {
+        // The sign-in popup must load the real redirect page, never the cached app shell.
+        navigateFallbackDenylist: [/auth-redirect\.html/],
+      },
       manifest: {
         name: 'Packlist',
         short_name: 'Packlist',

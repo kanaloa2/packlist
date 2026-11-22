@@ -18,16 +18,17 @@ const DEFAULTS: DataverseConfig = {
 const KEY = 'packlist.dataverse';
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function loadConfig(): DataverseConfig {
+/** This device's copy of the settings (the account copy is in accountSettings.ts). */
+export function loadConfig(): DataverseConfig & { updatedAt?: number } {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<DataverseConfig>;
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<DataverseConfig & { updatedAt: number }>;
     return { ...DEFAULTS, ...Object.fromEntries(Object.entries(saved).filter(([, v]) => v)) };
   } catch {
     return DEFAULTS;
   }
 }
 
-export function saveConfig(c: DataverseConfig) {
+export function saveConfig(c: DataverseConfig & { updatedAt?: number }) {
   try {
     localStorage.setItem(KEY, JSON.stringify(c));
   } catch {

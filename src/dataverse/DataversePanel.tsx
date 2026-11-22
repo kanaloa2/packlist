@@ -5,6 +5,7 @@ import { currentAccount, friendlyAuthError, signIn, signOut } from './auth';
 import { describeTables, listTables, matchesPrefix, summaryText, type TableInfo } from './api';
 import { applyPlan, buildPlan, fetchSource, type Plan } from './importer';
 import { useAuth } from '../auth/AuthGate';
+import { reconcileSettings, saveAccountSettings } from './accountSettings';
 import { Link } from 'react-router-dom';
 
 /**
@@ -22,12 +23,43 @@ export function DataversePanel() {
   const setFilter = (f: string) => {
     setFilterState(f);
     writeFilter(f);
+    // Share the filter across devices too, once typing pauses.
+    if (filterTimer.current) clearTimeout(filterTimer.current);
+    filterTimer.current = setTimeout(() => {
+      const cfg = { ...loadConfig(), updatedAt: Date.now() };
+      if (checkConfig(cfg) !== null) return;
+      saveConfig(cfg);
+      saveAccountSettings({ ...cfg, tableFilter: f }).catch(() => {});
+    }, 1500);
   };
   const [summary, setSummary] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const { session } = useAuth();
+  const [syncNote, setSyncNote] = useState('');
+  const filterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Use the settings saved to the account (entered on any device), or upload this device's.
+  useEffect(() => {
+    let cancelled = false;
+    const local = loadConfig();
+    reconcileSettings({ ...local, tableFilter: readFilter() }).then(({ settings, uploaded }) => {
+      if (cancelled || !settings) return;
+      const { tableFilter, ...cfg } = settings;
+      saveConfig(cfg);
+      setConfig(cfg);
+      if (tableFilter !== undefined) {
+        setFilterState(tableFilter);
+        writeFilter(tableFilter);
+      }
+      setEditing(checkConfig(cfg) !== null);
+      if (uploaded) setSyncNote('Saved these settings to your account, so your other devices will use them too.');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [includePhotos, setIncludePhotos] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -141,10 +173,18 @@ export function DataversePanel() {
           onSubmit={(e) => {
             e.preventDefault();
             if (problem) return setError(problem);
-            const clean = { envUrl: config.envUrl.trim(), clientId: config.clientId.trim(), tenantId: config.tenantId.trim() };
+            const clean = {
+              envUrl: config.envUrl.trim(),
+              clientId: config.clientId.trim(),
+              tenantId: config.tenantId.trim(),
+              updatedAt: Date.now(),
+            };
             saveConfig(clean);
             setConfig(clean);
             setEditing(false);
+            saveAccountSettings({ ...clean, tableFilter: filter })
+              .then(() => setSyncNote('Saved to your account. Your other devices will use these settings too.'))
+              .catch(() => setSyncNote('Saved on this device. It’ll be added to your account next time you open this while online.'));
             setError('');
           }}
         >
@@ -242,6 +282,11 @@ export function DataversePanel() {
       {error && (
         <p className="field-error" role="alert">
           {error}
+        </p>
+      )}
+      {syncNote && !editing && (
+        <p className="muted small" role="status">
+          {syncNote}
         </p>
       )}
 

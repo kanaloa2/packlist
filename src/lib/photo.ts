@@ -1,5 +1,5 @@
 /** Reads an image file, scales it to fit within maxSize px, and returns a JPEG data URL. */
-export async function resizeImage(file: File, maxSize = 1280, quality = 0.82): Promise<string> {
+export async function resizeImage(file: Blob, maxSize = 1280, quality = 0.82): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);

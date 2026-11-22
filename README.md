@@ -48,7 +48,26 @@ If the same thing is edited on two devices while one of them is offline, the las
 
 **Settings → Import from Dataverse** connects to a Microsoft Dataverse environment through the Dataverse Web API, using Microsoft sign-in (MSAL, authorization code flow with PKCE). Packlist reads only what the signed-in Microsoft account is allowed to read, and nothing is sent anywhere except Microsoft.
 
-Right now the panel does the first step: sign in, filter the table list by name (for example, tables starting with `PackList`; the filter is remembered), select the tables that hold your trips, and copy their structure (columns, types, links, choice values; no row data) so the importer can be matched to your tables. The import itself comes next.
+It's built for the **PackList** Dataverse app (tables prefixed `cr282_packlist_`). Tap **Preview import** to see what will come across, then **Import**:
+
+| Dataverse | Packlist |
+| --- | --- |
+| PackList_Trip (Title, Description, Start, End, Image) | Trip. Dates widen if an activity falls outside them. |
+| PackList_Destination (linked to trips many-to-many) | Destination, copied into each trip that uses it |
+| PackList_Place (→ Destination) | Place. Type guessed from the name (Hotel, Restaurant…), otherwise Other. |
+| PackList_Activity (→ Place, → Trip, Start, Stop) | Activity. No stop time means 1 hour. No trip link: inferred from the destination if it's on exactly one trip, otherwise skipped. |
+| PackList_Item (Title, Type, Image) | Item. Shirt → Shirts, Pants → Pants, Shoes → Shoes, Socks/Underwear → one per day, Jacket → Jackets & coats, Accessory → Accessories. |
+| Item ⇄ Activity (both relationships) | Items on activities |
+| PackList_ItemCount (Trip, Item, Count, Packed) | Packed tick, plus a manual count where Count differs from Packlist's automatic count |
+
+- Only active records are imported.
+- The preview lists anything skipped or adjusted, and items linked to a trip but to none of its activities. Those go into the item library but not onto a packing list, because packing lists are built from activities.
+- **Importing again updates the same records** instead of creating copies, because record IDs are derived from the Dataverse IDs.
+  - A photo added in Packlist is kept if the Dataverse record has none.
+  - A count set by hand is kept unless Dataverse has a count for that item.
+  - Records deleted in Dataverse aren't deleted from Packlist.
+- Dates and times stored in UTC are shown in the device's time zone.
+- **Advanced: copy table details** lists any tables' structure (no row data) for troubleshooting.
 
 **One-time setup in Microsoft Entra ID** (a tenant admin does this once):
 
@@ -89,6 +108,6 @@ The Supabase project URL and publishable key are in `src/supabase.ts`. They're p
 | `src/sync/engine.ts` | Offline-first sync: change queue, push, pull, photo upload/download, live updates |
 | `src/sync/mapping.ts` | Local ⇄ Postgres field mapping |
 | `supabase/migrations/` | Postgres schema, RLS policies, storage bucket and policies |
-| `src/dataverse/` | Microsoft sign-in, Dataverse Web API client, and the Settings panel |
+| `src/dataverse/` | Microsoft sign-in, Dataverse Web API client, the importer (`importer.ts`: fetch → plan → apply) and the Settings panel |
 | `auth-redirect.html` | The page Microsoft's sign-in popup returns to; hands the result to the app |
 | `src/pages/*` | Screens: trips, trip, destination, place, activity, items, item, settings |

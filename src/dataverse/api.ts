@@ -3,23 +3,26 @@ import { getToken } from './auth';
 
 type Json = Record<string, unknown>;
 
-/** Fetches from the Dataverse Web API. `fetcher` and `token` are injectable for tests. */
-export async function dvGet<T = Json>(
-  c: DataverseConfig,
-  path: string,
-  deps: { fetcher?: typeof fetch; token?: string } = {},
-): Promise<T> {
+export interface DvDeps {
+  fetcher?: typeof fetch;
+  token?: string;
+}
+
+async function dvRequest(c: DataverseConfig, pathOrUrl: string, deps: DvDeps, accept: string, prefer: string) {
   const token = deps.token ?? (await getToken(c));
-  const res = await (deps.fetcher ?? fetch)(`${normalizeEnvUrl(c.envUrl)}/api/data/v9.2/${path}`, {
+  const base = `${normalizeEnvUrl(c.envUrl)}/api/data/v9.2/`;
+  const url = pathOrUrl.startsWith('https://') ? pathOrUrl : base + pathOrUrl;
+  if (!url.startsWith(base)) throw new Error('Refusing to call a URL outside the Dataverse environment.');
+  const res = await (deps.fetcher ?? fetch)(url, {
     headers: {
       Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
+      Accept: accept,
       'OData-MaxVersion': '4.0',
       'OData-Version': '4.0',
-      Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"',
+      Prefer: prefer,
     },
   });
-  if (!res.ok) {
+  if (!res.ok && res.status !== 204) {
     let detail = '';
     try {
       detail = ((await res.json()) as { error?: { message?: string } }).error?.message ?? '';
@@ -28,9 +31,41 @@ export async function dvGet<T = Json>(
     }
     if (res.status === 401) throw new Error('Dataverse rejected the sign-in. Try signing out and in again.');
     if (res.status === 403) throw new Error(`Your account can’t read this in Dataverse${detail ? `: ${detail}` : '.'}`);
-    throw new Error(`Dataverse request failed (${res.status})${detail ? `: ${detail}` : ''}`);
+    throw Object.assign(new Error(`Dataverse request failed (${res.status})${detail ? `: ${detail}` : ''}`), { status: res.status });
   }
+  return res;
+}
+
+/** Fetches JSON from the Dataverse Web API. `fetcher` and `token` are injectable for tests. */
+export async function dvGet<T = Json>(c: DataverseConfig, path: string, deps: DvDeps = {}): Promise<T> {
+  const res = await dvRequest(c, path, deps, 'application/json', 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"');
   return (await res.json()) as T;
+}
+
+/** Fetches every row of a query, following Dataverse's paging links. */
+export async function dvGetAll(c: DataverseConfig, path: string, deps: DvDeps = {}): Promise<Json[]> {
+  const rows: Json[] = [];
+  let next: string | undefined = path;
+  while (next) {
+    const res = await dvRequest(c, next, deps, 'application/json', 'odata.maxpagesize=500');
+    const page = (await res.json()) as { value?: Json[]; '@odata.nextLink'?: string };
+    rows.push(...(page.value ?? []));
+    next = page['@odata.nextLink'];
+  }
+  return rows;
+}
+
+/** Downloads a file/image column; null if the record has none. */
+export async function dvGetBlob(c: DataverseConfig, path: string, deps: DvDeps = {}): Promise<Blob | null> {
+  try {
+    const res = await dvRequest(c, path, deps, 'application/octet-stream', 'return=representation');
+    if (res.status === 204) return null;
+    const blob = await res.blob();
+    return blob.size ? blob : null;
+  } catch (e) {
+    if ((e as { status?: number }).status === 404) return null;
+    throw e;
+  }
 }
 
 const label = (l: unknown): string =>
@@ -44,7 +79,7 @@ export interface TableInfo {
 }
 
 /** Custom (non-system) tables in the environment — where an app like yours keeps its data. */
-export async function listTables(c: DataverseConfig, deps?: Parameters<typeof dvGet>[2]): Promise<TableInfo[]> {
+export async function listTables(c: DataverseConfig, deps?: DvDeps): Promise<TableInfo[]> {
   const res = await dvGet<{ value: Json[] }>(
     c,
     'EntityDefinitions?$select=LogicalName,EntitySetName,DisplayName,IsCustomEntity,IsIntersect',
@@ -106,7 +141,7 @@ const KEEP_SYSTEM = new Set(['createdon', 'modifiedon', 'statecode', 'statuscode
 export async function describeTables(
   c: DataverseConfig,
   tables: TableInfo[],
-  deps?: Parameters<typeof dvGet>[2],
+  deps?: DvDeps,
 ): Promise<TableSummary[]> {
   const out: TableSummary[] = [];
   for (const t of tables) {

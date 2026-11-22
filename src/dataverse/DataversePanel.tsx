@@ -3,10 +3,14 @@ import type { AccountInfo } from '@azure/msal-browser';
 import { checkConfig, loadConfig, saveConfig, type DataverseConfig } from './config';
 import { currentAccount, friendlyAuthError, signIn, signOut } from './auth';
 import { describeTables, listTables, matchesPrefix, summaryText, type TableInfo } from './api';
+import { applyPlan, buildPlan, fetchSource, type Plan } from './importer';
+import { useAuth } from '../auth/AuthGate';
+import { Link } from 'react-router-dom';
 
 /**
- * Settings → Dataverse. Step 1 of the Dataverse import: connect, pick the tables that hold
- * your trips, and copy their structure (no row data) so the importer can be matched to them.
+ * Settings → Import from Dataverse: connect with Microsoft, preview what will come across
+ * from the PackList Dataverse app, then import it. An advanced section can copy the
+ * structure of any tables (no row data) for troubleshooting.
  */
 export function DataversePanel() {
   const [config, setConfig] = useState<DataverseConfig>(loadConfig);
@@ -23,6 +27,11 @@ export function DataversePanel() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const { session } = useAuth();
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [includePhotos, setIncludePhotos] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [done, setDone] = useState<string>('');
   // Bumped by Cancel so a sign-in that finishes later is ignored.
   const [, setAttempt] = useState(0);
   const attemptRef = useRef(0);
@@ -62,9 +71,37 @@ export function DataversePanel() {
 
   async function connect() {
     const acct = await run('Waiting for Microsoft sign-in…', () => signIn(config));
-    if (acct) {
-      setAccount(acct);
-      await loadTables();
+    if (acct) setAccount(acct);
+  }
+
+  /** Progress messages for the current attempt only (ignored after Cancel). */
+  function progress() {
+    const mine = attemptRef.current;
+    return (msg: string) => attemptRef.current === mine && setBusy(msg);
+  }
+
+  async function preview() {
+    setDone('');
+    setPlan(null);
+    const say = progress();
+    const p = await run('Reading your PackList data…', async () => buildPlan(await fetchSource(config, {}, say), session.user.id));
+    if (p) setPlan(p);
+  }
+
+  async function doImport() {
+    if (!plan) return;
+    setImporting(true);
+    const say = progress();
+    const r = await run('Importing…', () => applyPlan(config, plan, { includePhotos, onProgress: say }));
+    setImporting(false);
+    if (r) {
+      setDone(
+        `Imported ${plan.trips.length} trip${plan.trips.length === 1 ? '' : 's'}, ${plan.activities.length} activities and ${plan.items.length} items` +
+          (includePhotos ? ` with ${r.photos} photo${r.photos === 1 ? '' : 's'}` : '') +
+          (r.photoFailures ? ` (${r.photoFailures} photo${r.photoFailures === 1 ? '' : 's'} couldn’t be downloaded)` : '') +
+          '. It’s syncing to your account now.',
+      );
+      setPlan(null);
     }
   }
 
@@ -94,8 +131,8 @@ export function DataversePanel() {
     <section className="panel">
       <h2>Import from Dataverse</h2>
       <p className="muted">
-        Connect your Dataverse environment to bring in trips, destinations, places, activities and items. First step:
-        pick the tables your app uses so the importer can be matched to them.
+        Bring in trips, destinations, places, activities and items from your PackList app in Dataverse. You’ll see a
+        preview first. Importing again later updates what was imported instead of making copies.
       </p>
 
       {editing ? (
@@ -159,8 +196,8 @@ export function DataversePanel() {
           <div className="row-actions">
             {account ? (
               <>
-                <button className="btn btn-secondary" disabled={!!busy} onClick={loadTables}>
-                  {tables ? 'Reload tables' : 'Show my tables'}
+                <button className="btn btn-primary" disabled={!!busy} onClick={preview}>
+                  {plan ? 'Refresh preview' : 'Preview import'}
                 </button>
                 <button
                   className="btn btn-ghost"
@@ -170,6 +207,7 @@ export function DataversePanel() {
                     setAccount(null);
                     setTables(null);
                     setSummary('');
+                    setPlan(null);
                   }}
                 >
                   Disconnect
@@ -187,6 +225,7 @@ export function DataversePanel() {
       {busy && (
         <p className="muted small" role="status">
           {busy}{' '}
+          {!importing && (
           <button
             className="link-btn"
             onClick={() => {
@@ -197,6 +236,7 @@ export function DataversePanel() {
           >
             Cancel
           </button>
+          )}
         </p>
       )}
       {error && (
@@ -205,6 +245,21 @@ export function DataversePanel() {
         </p>
       )}
 
+      {done && (
+        <p className="success" role="status">
+          {done} <Link to="/">See your trips →</Link>
+        </p>
+      )}
+
+      {plan && !busy && <ImportPreview plan={plan} includePhotos={includePhotos} setIncludePhotos={setIncludePhotos} onImport={doImport} />}
+
+      {account && !editing && (
+        <details className="dv-advanced">
+          <summary>Advanced: copy table details</summary>
+          <p className="muted small">Lists any tables’ columns and links (no row data), for troubleshooting.</p>
+          <button className="btn btn-small btn-ghost" disabled={!!busy} onClick={loadTables}>
+            {tables ? 'Reload tables' : 'Show my tables'}
+          </button>
       {tables && !summary && (
         <div className="dv-tables">
           {tables.length === 0 ? (
@@ -293,7 +348,82 @@ export function DataversePanel() {
           <textarea className="dv-output" readOnly value={summary} rows={10} onFocus={(e) => e.target.select()} />
         </div>
       )}
+        </details>
+      )}
     </section>
+  );
+}
+
+function ImportPreview({
+  plan,
+  includePhotos,
+  setIncludePhotos,
+  onImport,
+}: {
+  plan: Plan;
+  includePhotos: boolean;
+  setIncludePhotos: (v: boolean) => void;
+  onImport: () => void;
+}) {
+  const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+  const packed = plan.packStatus.filter((s) => s.packed).length;
+  const tripOnly = plan.tripOnlyItems.reduce((sum, t) => sum + t.items.length, 0);
+  return (
+    <div className="dv-preview">
+      <h3>Ready to import</h3>
+      <ul className="dv-counts">
+        <li>{n(plan.trips.length, 'trip')}</li>
+        <li>{n(plan.destinations.length, 'destination')}</li>
+        <li>{n(plan.places.length, 'place')}</li>
+        <li>{n(plan.activities.length, 'activity', 'activities')}</li>
+        <li>{n(plan.items.length, 'item')}</li>
+        <li>{n(plan.activityItems.length, 'item on an activity', 'items on activities')}</li>
+        <li>{n(packed, 'packed tick')}</li>
+      </ul>
+      <p className="muted small">
+        Trips: {plan.trips.map((t) => t.name).join(', ') || 'none'}. Destinations used on more than one trip are copied into
+        each trip.
+      </p>
+      {plan.warnings.length > 0 && (
+        <details className="dv-notes">
+          <summary>
+            {n(plan.warnings.length, 'thing', 'things')} to know
+          </summary>
+          <ul>
+            {plan.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {tripOnly > 0 && (
+        <details className="dv-notes">
+          <summary>
+            {n(tripOnly, 'item is', 'items are')} linked to a trip but not to any of its activities
+          </summary>
+          <p className="small">
+            Packlist builds the packing list from activities, so these won’t appear on a packing list until you add them to
+            an activity. They’re still imported into your item library.
+          </p>
+          <ul>
+            {plan.tripOnlyItems.map((t) => (
+              <li key={t.trip}>
+                <strong>{t.trip}:</strong> {t.items.join(', ')}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <label className="toggle">
+        <input type="checkbox" checked={includePhotos} onChange={(e) => setIncludePhotos(e.target.checked)} />
+        Include photos ({plan.photos.length})
+      </label>
+      <div className="row-actions">
+        <button className="btn btn-primary" onClick={onImport}>
+          Import
+        </button>
+      </div>
+    </div>
   );
 }
 

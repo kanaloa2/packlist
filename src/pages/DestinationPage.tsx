@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRecord, useTripData } from '../hooks';
-import { ActivityDialog, DestinationDialog, PlaceDialog } from '../components/forms';
+import { ActivityDialog, DestinationDialog } from '../components/forms';
+import { PlacePicker } from '../components/PlacePicker';
 import { Breadcrumbs, Empty, Hero, NotFound, SectionHeader } from '../components/ui';
 import { PlaceBlock } from '../components/itinerary';
 import { deleteDestination } from '../lib/repo';
@@ -81,11 +82,12 @@ export function DestinationPage() {
       )}
 
       <DestinationDialog open={dialog === 'edit'} existing={dest} tripId={trip.id} onClose={() => setDialog(null)} />
-      <PlaceDialog
+      <PlacePicker
         open={dialog === 'place'}
         destinationId={dest.id}
+        tripId={trip.id}
         onClose={() => setDialog(null)}
-        onSaved={(id) => navigate(`/places/${id}`)}
+        onCreated={(id) => navigate(`/places/${id}`)}
       />
       <ActivityDialog
         open={typeof dialog === 'object' && dialog !== null}

@@ -1642,3 +1642,6 @@ input[type='password'] {
   opacity: 0.55;
   cursor: default;
 }
+.library-link {
+  margin: 0.75rem 0 0;
+}

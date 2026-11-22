@@ -184,6 +184,20 @@ describe('sync engine', () => {
     expect(server.rows('trip_items')).toHaveLength(0);
   });
 
+  it('syncs library places before the trip places that link to them', async () => {
+    const { place } = await seed();
+    await engine.syncNow();
+    const libId = (await db.places.get(place.id))!.libraryId!;
+    expect(server.table('library_places').get(libId)).toMatchObject({ name: 'Bellagio' });
+    expect(server.table('places').get(place.id)).toMatchObject({ library_id: libId });
+    await repo.deleteLibraryPlace(libId);
+    await settle();
+    await engine.syncNow();
+    expect(server.table('library_places').has(libId)).toBe(false);
+    expect(server.table('places').get(place.id)).toMatchObject({ name: 'Bellagio', library_id: null });
+    expect(engine.getStatus().rejected).toBe(0);
+  });
+
   it('does not record changes while signed out', async () => {
     await engine.stop();
     await repo.createItem({ name: 'Local only', category: 'Other' });

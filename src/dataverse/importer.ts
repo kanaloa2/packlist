@@ -1,5 +1,5 @@
 import { db } from '../db';
-import type { Activity, ActivityItem, CountRule, Destination, Item, ItemCategory, PackStatus, Place, PlaceType, Trip, TripItem } from '../types';
+import type { Activity, ActivityItem, CountRule, Destination, Item, ItemCategory, LibraryPlace, PackStatus, Place, PlaceType, Trip, TripItem } from '../types';
 import { buildPackingList } from '../lib/packing';
 import { resizeImage } from '../lib/photo';
 import { dvGet, dvGetAll, dvGetBlob, type DvDeps } from './api';
@@ -144,6 +144,8 @@ export interface PhotoJob {
 export interface Plan {
   trips: Trip[];
   destinations: Destination[];
+  /** One library entry per Dataverse place (shared by its copies on several trips). */
+  libraryPlaces: LibraryPlace[];
   places: Place[];
   activities: Activity[];
   items: Item[];
@@ -291,6 +293,7 @@ export async function buildPlan(src: Source, userId: string, now = Date.now()): 
   // --- Destinations and places, one copy per trip that uses them.
   const destinations: Destination[] = [];
   const places: Place[] = [];
+  const libraryPlaces: LibraryPlace[] = [];
   const destPk = new Map<string, string>(); // `${trip}|${dest}` → id
   const placePk = new Map<string, string>(); // `${trip}|${place}` → id
   const UNASSIGNED = '__unassigned__';
@@ -322,16 +325,22 @@ export async function buildPlan(src: Source, userId: string, now = Date.now()): 
     const id = await sid('place', placeKey, trip);
     placePk.set(key, id);
     const name = row ? title(row, 'Untitled place') : 'Unassigned place';
-    places.push({
-      id,
-      tripId: tripPk.get(trip)!,
-      destinationId,
+    const details = {
       name,
       description: row ? str(row.cr282_description) : 'Activities from Dataverse that aren’t linked to a place.',
-      type: row ? guessPlaceType(name) : 'Other',
+      type: row ? guessPlaceType(name) : ('Other' as PlaceType),
       address: '',
-      ...stamp,
-    });
+    };
+    // Real Dataverse places get one library entry, shared by every trip they're copied into.
+    let libraryId: string | undefined;
+    if (row && place) {
+      libraryId = await sid('libraryPlace', place);
+      if (!libraryPlaces.some((l) => l.id === libraryId)) {
+        libraryPlaces.push({ id: libraryId, ...details, ...stamp });
+        addPhoto('places', T.place.set, place, row, libraryId);
+      }
+    }
+    places.push({ id, tripId: tripPk.get(trip)!, destinationId, libraryId, ...details, ...stamp });
     if (row && place) addPhoto('places', T.place.set, place, row, id);
     return id;
   };
@@ -447,6 +456,7 @@ export async function buildPlan(src: Source, userId: string, now = Date.now()): 
   return {
     trips,
     destinations,
+    libraryPlaces,
     places,
     activities,
     items,
@@ -511,11 +521,24 @@ export async function applyPlan(
       return { ...r, ...(photo ? { photo } : {}), ...(old?.createdAt ? { createdAt: old.createdAt } : {}) };
     });
 
-  await db.transaction('rw', [db.trips, db.destinations, db.places, db.activities, db.items, db.tripItems, db.activityItems, db.packStatus], async () => {
+  // Places already imported may be linked to a different library entry (for example one the
+  // server created when the library was introduced): keep using that one, don't add another.
+  const priorPlaces = await db.places.bulkGet(plan.places.map((p) => p.id));
+  const libFor = new Map<string, string>();
+  plan.places.forEach((p, i) => {
+    const prior = priorPlaces[i]?.libraryId;
+    if (p.libraryId && prior && prior !== p.libraryId) libFor.set(p.libraryId, prior);
+  });
+  const libraryPlaces = plan.libraryPlaces.map((l) => ({ ...l, id: libFor.get(l.id) ?? l.id }));
+  const places = plan.places.map((p) => (p.libraryId ? { ...p, libraryId: libFor.get(p.libraryId) ?? p.libraryId } : p));
+  for (const [from, to] of libFor) if (photoFor.has(from)) photoFor.set(to, photoFor.get(from)!);
+
+  await db.transaction('rw', [db.placeLibrary, db.trips, db.destinations, db.places, db.activities, db.items, db.tripItems, db.activityItems, db.packStatus], async () => {
     // Parents before children, so they reach the server in a valid order.
     await db.trips.bulkPut(keep(plan.trips, await db.trips.bulkGet(plan.trips.map((r) => r.id))));
     await db.destinations.bulkPut(keep(plan.destinations, await db.destinations.bulkGet(plan.destinations.map((r) => r.id))));
-    await db.places.bulkPut(keep(plan.places, await db.places.bulkGet(plan.places.map((r) => r.id))));
+    await db.placeLibrary.bulkPut(keep(libraryPlaces, await db.placeLibrary.bulkGet(libraryPlaces.map((r) => r.id))));
+    await db.places.bulkPut(keep(places, priorPlaces));
     await db.activities.bulkPut(keep(plan.activities, await db.activities.bulkGet(plan.activities.map((r) => r.id))));
     await db.items.bulkPut(keep(plan.items, await db.items.bulkGet(plan.items.map((r) => r.id))));
     await db.tripItems.bulkPut(plan.tripItems);

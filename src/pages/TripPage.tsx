@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTripData, type TripData } from '../hooks';
-import { ActivityDialog, DestinationDialog, PlaceDialog, TripDialog } from '../components/forms';
+import { ActivityDialog, DestinationDialog, TripDialog } from '../components/forms';
+import { PlacePicker } from '../components/PlacePicker';
 import { Breadcrumbs, Empty, Hero, NotFound, ProgressBar, SectionHeader, Thumb } from '../components/ui';
 import { ActivityRow, PlaceBlock } from '../components/itinerary';
 import { PackingList } from '../components/PackingList';
@@ -109,9 +110,10 @@ export function TripPage() {
         tripId={trip.id}
         onClose={close}
       />
-      <PlaceDialog
+      <PlacePicker
         open={dialog?.kind === 'place'}
         destinationId={dialog?.kind === 'place' ? dialog.destinationId : ''}
+        tripId={trip.id}
         onClose={close}
       />
       <ActivityDialog

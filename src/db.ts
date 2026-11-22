@@ -3,6 +3,7 @@ import type {
   Activity,
   ActivityItem,
   Destination,
+  LibraryPlace,
   TripItem,
   Item,
   PackStatus,
@@ -14,6 +15,7 @@ export class PacklistDB extends Dexie {
   trips!: EntityTable<Trip, 'id'>;
   destinations!: EntityTable<Destination, 'id'>;
   places!: EntityTable<Place, 'id'>;
+  placeLibrary!: EntityTable<LibraryPlace, 'id'>;
   activities!: EntityTable<Activity, 'id'>;
   items!: EntityTable<Item, 'id'>;
   activityItems!: EntityTable<ActivityItem, 'id'>;
@@ -45,6 +47,10 @@ export class PacklistDB extends Dexie {
     this.version(3).stores({
       tripItems: 'id, tripId, itemId',
     });
+    this.version(4).stores({
+      placeLibrary: 'id, name',
+      places: 'id, tripId, destinationId, libraryId',
+    });
   }
 }
 
@@ -67,6 +73,7 @@ export interface MetaEntry {
 export const db = new PacklistDB();
 
 export const ALL_TABLES = [
+  'placeLibrary',
   'trips',
   'destinations',
   'places',

@@ -6,13 +6,14 @@ import type {
   Item,
   CountRule,
   ItemCategory,
+  LibraryPlace,
   PackStatus,
   Place,
   TripItem,
   PlaceType,
   Trip,
 } from '../types';
-import { datePart, shiftYmd, validateActivityTimes, validateTripDates } from './dates';
+import { datePart, dayCount, shiftYmd, validateActivityTimes, validateTripDates } from './dates';
 
 export { shiftYmd };
 
@@ -224,48 +225,166 @@ export async function deleteDestination(id: string): Promise<void> {
 }
 
 // ---------- Places ----------
+//
+// A place on a trip (`places`) is an instance of a place in the user's library
+// (`placeLibrary`). Its details are a copy kept in step with the library entry: editing a
+// place updates the library and every trip that uses it.
 
 export interface PlaceInput extends Common {
   type: PlaceType;
   address?: string;
 }
 
-export async function createPlace(destinationId: string, input: PlaceInput): Promise<Place> {
-  requireName(input.name);
-  const dest = await db.destinations.get(destinationId);
-  if (!dest) throw new Error('Destination not found');
-  const place: Place = {
-    id: newId(),
-    tripId: dest.tripId,
-    destinationId,
+function placeDetails(input: PlaceInput) {
+  return {
     name: input.name.trim(),
     description: input.description ?? '',
     photo: input.photo,
     type: input.type,
     address: input.address ?? '',
+  };
+}
+
+/** Adds a place to the library only (not to any trip). */
+export async function createLibraryPlace(input: PlaceInput): Promise<LibraryPlace> {
+  requireName(input.name);
+  const lib: LibraryPlace = { id: newId(), ...placeDetails(input), ...stamp() };
+  await db.placeLibrary.add(lib);
+  return lib;
+}
+
+/** Edits a library place and every trip place linked to it. */
+export async function updateLibraryPlace(id: string, input: PlaceInput): Promise<void> {
+  requireName(input.name);
+  const details = { ...placeDetails(input), updatedAt: Date.now() };
+  await db.transaction('rw', [db.placeLibrary, db.places], async () => {
+    await db.placeLibrary.update(id, details);
+    await db.places.where('libraryId').equals(id).modify(details);
+  });
+}
+
+/**
+ * Deletes a place from the library. Trips that use it keep their copy (unlinked), so no
+ * itinerary or activity is lost.
+ */
+export async function deleteLibraryPlace(id: string): Promise<void> {
+  await db.transaction('rw', [db.placeLibrary, db.places], async () => {
+    await db.placeLibrary.delete(id);
+    await db.places.where('libraryId').equals(id).modify((p) => {
+      delete p.libraryId;
+    });
+  });
+}
+
+/** Creates a new place: added to the library and to the destination. */
+export async function createPlace(destinationId: string, input: PlaceInput): Promise<Place> {
+  requireName(input.name);
+  const dest = await db.destinations.get(destinationId);
+  if (!dest) throw new Error('Destination not found');
+  return db.transaction('rw', [db.placeLibrary, db.places], async () => {
+    const lib = await createLibraryPlace(input);
+    const place: Place = { id: newId(), tripId: dest.tripId, destinationId, libraryId: lib.id, ...placeDetails(input), ...stamp() };
+    await db.places.add(place);
+    return place;
+  });
+}
+
+/** Puts a library place on a trip, under the given destination. */
+export async function addPlaceFromLibrary(destinationId: string, libraryId: string): Promise<Place> {
+  const [dest, lib] = await Promise.all([db.destinations.get(destinationId), db.placeLibrary.get(libraryId)]);
+  if (!dest) throw new Error('Destination not found');
+  if (!lib) throw new Error('Place not found in your library');
+  const place: Place = {
+    id: newId(),
+    tripId: dest.tripId,
+    destinationId,
+    libraryId,
+    name: lib.name,
+    description: lib.description,
+    photo: lib.photo,
+    type: lib.type,
+    address: lib.address,
     ...stamp(),
   };
   await db.places.add(place);
   return place;
 }
 
+/** Edits a trip place: its library entry and every other trip using it change too. */
 export async function updatePlace(id: string, input: PlaceInput): Promise<void> {
   requireName(input.name);
-  await db.places.update(id, {
-    name: input.name.trim(),
-    description: input.description ?? '',
-    photo: input.photo,
-    type: input.type,
-    address: input.address ?? '',
-    updatedAt: Date.now(),
+  const place = await db.places.get(id);
+  if (!place) throw new Error('Place not found');
+  if (place.libraryId && (await db.placeLibrary.get(place.libraryId))) {
+    await updateLibraryPlace(place.libraryId, input);
+    return;
+  }
+  // Not linked yet (or its library entry was deleted): give it one now.
+  await db.transaction('rw', [db.placeLibrary, db.places], async () => {
+    const lib = await createLibraryPlace(input);
+    await db.places.update(id, { ...placeDetails(input), libraryId: lib.id, updatedAt: Date.now() });
   });
 }
 
-export async function deletePlace(id: string): Promise<void> {
+/** Removes a place from its trip, with its activities there. It stays in the library. */
+export async function removePlaceFromTrip(id: string): Promise<void> {
   await db.transaction('rw', [db.places, db.activities, db.activityItems], async () => {
     await deleteActivitiesWhere('placeId', id);
     await db.places.delete(id);
   });
+}
+
+/**
+ * Moves a place, with its activities, to another destination on the same trip or another
+ * trip. Moving to another trip keeps activity times if they fit its dates; otherwise they
+ * shift by the gap between the two trips' start dates. Returns that shift in days.
+ */
+export async function movePlace(placeId: string, toDestinationId: string): Promise<{ shiftedDays: number }> {
+  const place = await db.places.get(placeId);
+  const toDest = await db.destinations.get(toDestinationId);
+  if (!place) throw new Error('Place not found');
+  if (!toDest) throw new Error('Destination not found');
+  if (toDest.id === place.destinationId) throw new ValidationError('It’s already in that destination.');
+  const [fromTrip, toTrip] = await Promise.all([db.trips.get(place.tripId), db.trips.get(toDest.tripId)]);
+  if (!fromTrip || !toTrip) throw new Error('Trip not found');
+  const acts = await db.activities.where('placeId').equals(placeId).toArray();
+
+  let shiftedDays = 0;
+  if (toTrip.id !== fromTrip.id) {
+    const fits = (days: number) =>
+      acts.every((a) => !validateActivityTimes(shiftDateTime(a.start, days), shiftDateTime(a.end, days), toTrip.startDate, toTrip.endDate));
+    if (!fits(0)) {
+      shiftedDays = dayCount(fromTrip.startDate, toTrip.startDate) - 1;
+      if (!fits(shiftedDays)) {
+        const bad = acts.filter((a) => validateActivityTimes(shiftDateTime(a.start, shiftedDays), shiftDateTime(a.end, shiftedDays), toTrip.startDate, toTrip.endDate));
+        throw new ValidationError(
+          `${bad.length} activit${bad.length === 1 ? 'y' : 'ies'} (${bad.slice(0, 3).map((a) => `“${a.name}”`).join(', ')}) wouldn’t fit within “${toTrip.name}” (${toTrip.startDate} – ${toTrip.endDate}). Extend that trip’s dates first.`,
+        );
+      }
+    }
+  }
+
+  await db.transaction('rw', [db.places, db.activities, db.activityItems], async () => {
+    const now = Date.now();
+    await db.places.update(placeId, { tripId: toTrip.id, destinationId: toDest.id, updatedAt: now });
+    for (const a of acts) {
+      await db.activities.update(a.id, {
+        tripId: toTrip.id,
+        destinationId: toDest.id,
+        start: shiftDateTime(a.start, shiftedDays),
+        end: shiftDateTime(a.end, shiftedDays),
+        updatedAt: now,
+      });
+    }
+    if (acts.length && toTrip.id !== fromTrip.id) {
+      await db.activityItems.where('activityId').anyOf(acts.map((a) => a.id)).modify({ tripId: toTrip.id });
+    }
+  });
+  return { shiftedDays };
+}
+
+function shiftDateTime(v: string, days: number): string {
+  return days ? shiftYmd(datePart(v), days) + v.slice(10) : v;
 }
 
 // ---------- Activities ----------

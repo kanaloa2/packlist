@@ -5,7 +5,7 @@ import { ValidationError } from '../lib/repo';
 
 export type FieldDef =
   | { key: string; label: string; type: 'text'; required?: boolean; placeholder?: string; autoFocus?: boolean }
-  | { key: string; label: string; type: 'textarea'; placeholder?: string }
+  | { key: string; label: string; type: 'textarea'; placeholder?: string; hint?: string }
   | { key: string; label: string; type: 'date' | 'datetime'; required?: boolean; min?: string; max?: string; hint?: string }
   | {
       key: string;
@@ -109,6 +109,7 @@ function EntityForm({
                     {f.label}
                   </label>
                   <textarea id={id} value={v} rows={3} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} />
+                  {f.hint && <p className="hint">{f.hint}</p>}
                   {fieldError(f.key)}
                 </div>
               );

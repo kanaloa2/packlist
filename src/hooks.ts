@@ -3,7 +3,7 @@ import { db } from './db';
 import type { Activity, ActivityItem, Destination, Item, PackStatus, Place, Trip, TripItem } from './types';
 
 /** undefined = loading, null = not found */
-export function useRecord<T>(table: 'trips' | 'destinations' | 'places' | 'activities' | 'items', id: string | undefined) {
+export function useRecord<T>(table: 'trips' | 'destinations' | 'places' | 'placeLibrary' | 'activities' | 'items', id: string | undefined) {
   return useLiveQuery(async () => (id ? (((await db.table(table).get(id)) as T | undefined) ?? null) : null), [table, id]);
 }
 

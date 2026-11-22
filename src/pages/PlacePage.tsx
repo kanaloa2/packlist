@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useRecord, useTripData } from '../hooks';
 import { ActivityDialog, PlaceDialog } from '../components/forms';
 import { Breadcrumbs, Empty, Hero, NotFound, SectionHeader } from '../components/ui';
 import { ActivityRow } from '../components/itinerary';
-import { deletePlace } from '../lib/repo';
+import { removePlaceFromTrip } from '../lib/repo';
+import { MovePlaceDialog } from '../components/MovePlaceDialog';
 import { PLACE_ICONS, type Place } from '../types';
 
 export function PlacePage() {
@@ -12,7 +13,8 @@ export function PlacePage() {
   const place = useRecord<Place>('places', placeId);
   const data = useTripData(place?.tripId);
   const navigate = useNavigate();
-  const [dialog, setDialog] = useState<'edit' | 'activity' | null>(null);
+  const [dialog, setDialog] = useState<'edit' | 'activity' | 'move' | null>(null);
+  const [note, setNote] = useState('');
 
   if (place === undefined || (place && data === undefined)) return null;
   if (!place || !data) return <NotFound what="Place" />;
@@ -50,20 +52,39 @@ export function PlacePage() {
             <button className="btn btn-secondary btn-small" onClick={() => setDialog('edit')}>
               Edit
             </button>
+            <button className="btn btn-ghost btn-small" onClick={() => setDialog('move')}>
+              Move
+            </button>
             <button
               className="btn btn-danger btn-small"
               onClick={async () => {
-                if (confirm(`Delete “${place.name}” and its activities?`)) {
-                  await deletePlace(place.id);
+                const n = activities.length;
+                const msg =
+                  `Remove “${place.name}” from ${trip.name}?` +
+                  (n ? ` Its ${n} activit${n === 1 ? 'y' : 'ies'} on this trip will be deleted.` : '') +
+                  ' It stays in your places library.';
+                if (confirm(msg)) {
+                  await removePlaceFromTrip(place.id);
                   navigate(`/destinations/${place.destinationId}`);
                 }
               }}
             >
-              Delete
+              Remove from trip
             </button>
           </>
         }
       />
+
+      {note && (
+        <p className="success" role="status">
+          {note}
+        </p>
+      )}
+      {place.libraryId && (
+        <p className="muted small library-link">
+          In your <Link to={`/library/places/${place.libraryId}`}>places library</Link>
+        </p>
+      )}
 
       <SectionHeader
         title="Activities"
@@ -88,7 +109,8 @@ export function PlacePage() {
         </ul>
       )}
 
-      <PlaceDialog open={dialog === 'edit'} existing={place} destinationId={place.destinationId} onClose={() => setDialog(null)} />
+      <PlaceDialog open={dialog === 'edit'} existing={place} onClose={() => setDialog(null)} />
+      <MovePlaceDialog open={dialog === 'move'} place={place} onClose={() => setDialog(null)} onMoved={setNote} />
       <ActivityDialog
         open={dialog === 'activity'}
         placeId={place.id}

@@ -35,11 +35,24 @@ export const PLACE_TYPES = [
 ] as const;
 export type PlaceType = (typeof PLACE_TYPES)[number];
 
+/** A place in the user's places library, reusable across trips. */
+export interface LibraryPlace extends BaseEntity {
+  type: PlaceType;
+  address: string;
+}
+
+/**
+ * A place on a trip, under one of its destinations. Its details are a copy of the linked
+ * library place (kept in step when either is edited), so a trip shows correctly even if the
+ * library entry is later deleted.
+ */
 export interface Place extends BaseEntity {
   tripId: string;
   destinationId: string;
   type: PlaceType;
   address: string;
+  /** The library place this is an instance of (missing until linked). */
+  libraryId?: string;
 }
 
 export interface Activity extends BaseEntity {

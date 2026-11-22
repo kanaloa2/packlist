@@ -225,3 +225,31 @@ describe('import order', () => {
     expect(byCreated(plan.destinations)).toEqual(['Las Vegas', 'Shared Beach']);
   });
 });
+
+describe('import into the places library', () => {
+  const cfg = { envUrl: 'https://org81670796.crm.dynamics.com', clientId: 'c', tenantId: 't' };
+  const resize = async () => 'data:image/jpeg;base64,x';
+
+  it('creates one library place per Dataverse place, shared by its copies on several trips', async () => {
+    const plan = await buildPlan(source(), 'user-1');
+    expect(plan.libraryPlaces.map((l) => l.name).sort()).toEqual(['Bellagio Hotel', 'Prime Steakhouse', 'Sunny Beach']);
+    const beaches = plan.places.filter((p) => p.name === 'Sunny Beach');
+    expect(beaches).toHaveLength(2);
+    expect(new Set(beaches.map((p) => p.libraryId)).size).toBe(1);
+    expect(plan.places.find((p) => p.name === 'Unassigned place')?.libraryId).toBeUndefined();
+  });
+
+  it('re-import keeps using the library entry a place is already linked to', async () => {
+    const plan = await buildPlan(source(), 'user-1');
+    await applyPlan(cfg, plan, { includePhotos: false, resize });
+    expect(await db.placeLibrary.count()).toBe(3);
+    // Simulate the server's one-time backfill having linked Bellagio to a different entry.
+    const bellagio = plan.places.find((p) => p.name === 'Bellagio Hotel')!;
+    await db.placeLibrary.delete(bellagio.libraryId!);
+    await db.placeLibrary.add({ id: 'backfilled-lib', name: 'Bellagio Hotel', description: '', type: 'Hotel', address: '', createdAt: 1, updatedAt: 1 });
+    await db.places.update(bellagio.id, { libraryId: 'backfilled-lib' });
+    await applyPlan(cfg, await buildPlan(source(), 'user-1'), { includePhotos: false, resize });
+    expect((await db.places.get(bellagio.id))?.libraryId).toBe('backfilled-lib');
+    expect(await db.placeLibrary.count()).toBe(3); // no duplicate Bellagio
+  });
+});

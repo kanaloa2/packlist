@@ -19,6 +19,7 @@ import {
   type Destination,
   type Item,
   type ItemCategory,
+  type LibraryPlace,
   type Place,
   type PlaceType,
   type Trip,
@@ -104,29 +105,58 @@ export function DestinationDialog({ open, onClose, existing, onSaved, tripId }: 
 
 // ---------- Place ----------
 
-export function PlaceDialog({ open, onClose, existing, onSaved, destinationId }: Base<Place> & { destinationId: string }) {
+/**
+ * Create or edit a place. Pass `existing` to edit a trip's place, `library` to edit a library
+ * place, `destinationId` to create one on a trip, or nothing to create a library-only place.
+ * Edits apply to the library entry and every trip using it.
+ */
+export function PlaceDialog({
+  open,
+  onClose,
+  existing,
+  onSaved,
+  destinationId,
+  library,
+  defaultName = '',
+}: Base<Place> & { destinationId?: string; library?: LibraryPlace; defaultName?: string }) {
+  const editing = existing ?? library;
+  const usedOn = useLiveQuery(
+    async () => (editing ? db.places.where('libraryId').equals(existing?.libraryId ?? library?.id ?? '-').count() : 0),
+    [existing?.libraryId, library?.id],
+  );
   return (
     <EntityDialog
       open={open}
       onClose={onClose}
-      title={existing ? 'Edit place' : 'New place'}
-      submitLabel={existing ? 'Save' : 'Add place'}
+      title={editing ? 'Edit place' : 'New place'}
+      submitLabel={editing ? 'Save' : destinationId ? 'Add place' : 'Add to library'}
       fields={[
         { key: 'name', label: 'Place', type: 'text', required: true, placeholder: 'The Bellagio', autoFocus: true },
         { key: 'type', label: 'Type', type: 'select', options: PLACE_TYPES, icons: PLACE_ICONS },
         { key: 'address', label: 'Address', type: 'text', placeholder: 'Optional' },
-        { key: 'description', label: 'Description', type: 'textarea' },
+        {
+          key: 'description',
+          label: 'Description',
+          type: 'textarea',
+          ...(usedOn && usedOn > 1 ? { hint: `This place is on ${usedOn} trips; changes apply to all of them.` } : {}),
+        },
         { key: 'photo', label: 'Photo', type: 'photo' },
       ]}
-      initial={existing ? { ...existing } : { name: '', description: '', type: 'Hotel', address: '' }}
+      initial={editing ? { ...editing } : { name: defaultName, description: '', type: 'Hotel', address: '' }}
       onSubmit={async (v) => {
         const input = { ...common(v), type: (v.type ?? 'Other') as PlaceType, address: v.address ?? '' };
         if (existing) {
           await repo.updatePlace(existing.id, input);
           onSaved?.(existing.id);
-        } else {
+        } else if (library) {
+          await repo.updateLibraryPlace(library.id, input);
+          onSaved?.(library.id);
+        } else if (destinationId) {
           const p = await repo.createPlace(destinationId, input);
           onSaved?.(p.id);
+        } else {
+          const lib = await repo.createLibraryPlace(input);
+          onSaved?.(lib.id);
         }
       }}
     />

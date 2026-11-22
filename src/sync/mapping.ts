@@ -2,6 +2,7 @@ import type { TableName } from '../db';
 
 /** Postgres table for each local table. */
 export const REMOTE_TABLE: Record<TableName, string> = {
+  placeLibrary: 'library_places',
   trips: 'trips',
   destinations: 'destinations',
   places: 'places',
@@ -14,9 +15,10 @@ export const REMOTE_TABLE: Record<TableName, string> = {
 
 /** The fields that sync, per table (local camelCase names). Anything else stays local. */
 export const COLUMNS: Record<TableName, readonly string[]> = {
+  placeLibrary: ['id', 'name', 'description', 'photo', 'type', 'address', 'createdAt', 'updatedAt'],
   trips: ['id', 'name', 'description', 'photo', 'startDate', 'endDate', 'createdAt', 'updatedAt'],
   destinations: ['id', 'tripId', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
-  places: ['id', 'tripId', 'destinationId', 'type', 'address', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
+  places: ['id', 'tripId', 'destinationId', 'libraryId', 'type', 'address', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   activities: ['id', 'tripId', 'destinationId', 'placeId', 'name', 'description', 'photo', 'start', 'end', 'createdAt', 'updatedAt'],
   items: ['id', 'category', 'kind', 'countRule', 'name', 'description', 'photo', 'createdAt', 'updatedAt'],
   tripItems: ['id', 'tripId', 'itemId', 'quantity', 'note', 'createdAt'],
@@ -25,6 +27,7 @@ export const COLUMNS: Record<TableName, readonly string[]> = {
 };
 
 export const HAS_PHOTO: Record<TableName, boolean> = {
+  placeLibrary: true,
   trips: true,
   destinations: true,
   places: true,

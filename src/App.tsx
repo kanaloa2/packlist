@@ -8,6 +8,8 @@ import { ActivityPage } from './pages/ActivityPage';
 import { ItemsPage } from './pages/ItemsPage';
 import { ItemPage } from './pages/ItemPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { PlacesLibraryPage } from './pages/PlacesLibraryPage';
+import { LibraryPlacePage } from './pages/LibraryPlacePage';
 import { Empty } from './components/ui';
 import { AuthGate } from './auth/AuthGate';
 import { SyncIndicator } from './components/SyncIndicator';
@@ -44,6 +46,7 @@ function Shell() {
             <NavLink to="/" end>
               Trips
             </NavLink>
+            <NavLink to="/library/places">Places</NavLink>
             <NavLink to="/items">Items</NavLink>
             <NavLink to="/settings">Settings</NavLink>
           </nav>
@@ -57,6 +60,8 @@ function Shell() {
           <Route path="/destinations/:destinationId" element={<DestinationPage />} />
           <Route path="/places/:placeId" element={<PlacePage />} />
           <Route path="/activities/:activityId" element={<ActivityPage />} />
+          <Route path="/library/places" element={<PlacesLibraryPage />} />
+          <Route path="/library/places/:libraryId" element={<LibraryPlacePage />} />
           <Route path="/items" element={<ItemsPage />} />
           <Route path="/items/:itemId" element={<ItemPage />} />
           <Route path="/settings" element={<SettingsPage />} />
@@ -66,6 +71,9 @@ function Shell() {
       <nav className="tabbar" aria-label="Main">
         <NavLink to="/" end>
           <span aria-hidden>🧳</span>Trips
+        </NavLink>
+        <NavLink to="/library/places">
+          <span aria-hidden>📍</span>Places
         </NavLink>
         <NavLink to="/items">
           <span aria-hidden>👕</span>Items

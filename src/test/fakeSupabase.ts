@@ -1,6 +1,11 @@
 /* In-memory stand-in for the parts of supabase-js the sync engine uses. */
 type Row = Record<string, unknown>;
 
+/** Foreign keys that are cleared (not cascaded) when the parent is deleted, and may be null. */
+const SET_NULL: Record<string, [string, string][]> = {
+  places: [['library_id', 'library_places']],
+};
+
 const FKS: Record<string, [string, string][]> = {
   destinations: [['trip_id', 'trips']],
   places: [['trip_id', 'trips'], ['destination_id', 'destinations']],
@@ -31,6 +36,12 @@ export class FakeSupabase {
   }
 
   private cascade(name: string, id: string) {
+    for (const [child, fks] of Object.entries(SET_NULL)) {
+      for (const [col, parent] of fks) {
+        if (parent !== name) continue;
+        for (const r of this.rows(child)) if (r[col] === id) r[col] = null;
+      }
+    }
     for (const [child, fks] of Object.entries(FKS)) {
       for (const [col, parent] of fks) {
         if (parent !== name) continue;
@@ -49,6 +60,11 @@ export class FakeSupabase {
         if (this.offline) return this.netError();
         this.calls.push(`upsert ${name} ${rows.length}`);
         for (const r of rows) {
+          for (const [col, parent] of SET_NULL[name] ?? []) {
+            if (r[col] != null && !this.table(parent).has(String(r[col]))) {
+              return { data: null, error: { message: `violates foreign key ${col}`, code: '23503' }, status: 409 };
+            }
+          }
           for (const [col, parent] of FKS[name] ?? []) {
             if (!this.table(parent).has(String(r[col]))) {
               return { data: null, error: { message: `violates foreign key ${col}`, code: '23503' }, status: 409 };

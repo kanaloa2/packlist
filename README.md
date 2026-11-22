@@ -16,6 +16,12 @@ Trip (start & end dates)
 
 - **Every object** (trip, destination, place, activity, item) can have a **photo** and a **description**.
 - **Items** live in a shared library. On any activity you can **select** an existing item or **create** a new one on the spot. Items already used on the current trip are listed first.
+- **Places library.** Every place you add is saved to your **Places** library (the Places tab), so a hotel or restaurant can be reused on any trip.
+  - On a destination, **+ Place** lets you pick from the library or create a new place.
+  - **Editing a place updates it on every trip that uses it.**
+  - On a trip, a place's **Remove from trip** takes it (and its activities there) off that trip but keeps it in the library.
+  - In the library, **Add to a trip** puts a place on any trip, and **Delete** removes it from the library while leaving it on trips that already use it.
+- **Move a place**, with its activities, to another destination on the same trip or on another trip (**Move** on the place's page). Activity times stay put if they fit the new trip's dates. Otherwise they shift by the gap between the two trips' start dates, and if they still don't fit, nothing moves and you're told why. You can create the destination as you move.
 - **Item types.** Items can have a type such as Shirts, Pants, Jackets & coats, Shoes or Accessories, or one you type yourself (it's then offered for future items). New items get a suggested type from their name ("Navy blazer" → Jackets & coats).
 - **Whole-trip items.** Some things belong to the trip rather than one activity, like a passport, chargers or medications. Tap **+ Whole trip** on a trip's packing list to add them. It uses the same picker as activities: search the library or create new items on the spot. A trip with no activities yet can still have a packing list this way.
 - **The packing list** for a trip collects every item from every activity, plus its whole-trip items:
@@ -59,7 +65,7 @@ It's built for the **PackList** Dataverse app (tables prefixed `cr282_packlist_`
 | --- | --- |
 | PackList_Trip (Title, Description, Start, End, Image) | Trip. Dates widen if an activity falls outside them. |
 | PackList_Destination (linked to trips many-to-many) | Destination, copied into each trip that uses it |
-| PackList_Place (→ Destination) | Place. Type guessed from the name (Hotel, Restaurant…), otherwise Other. |
+| PackList_Place (→ Destination) | Place on each trip that uses it, plus one Places library entry. Type guessed from the name (Hotel, Restaurant…), otherwise Other. |
 | PackList_Activity (→ Place, → Trip, Start, Stop) | Activity. No stop time means 1 hour. No trip link: inferred from the destination if it's on exactly one trip, otherwise skipped. |
 | PackList_Item (Title, Type, Image) | Item. Shirt → Shirts, Pants → Pants, Shoes → Shoes, Socks/Underwear → one per day, Jacket → Jackets & coats, Accessory → Accessories. |
 | Item ⇄ Activity (both relationships) | Items on activities |

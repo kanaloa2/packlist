@@ -48,7 +48,7 @@ If the same thing is edited on two devices while one of them is offline, the las
 
 **Settings → Import from Dataverse** connects to a Microsoft Dataverse environment through the Dataverse Web API, using Microsoft sign-in (MSAL, authorization code flow with PKCE). Packlist reads only what the signed-in Microsoft account is allowed to read, and nothing is sent anywhere except Microsoft.
 
-Right now the panel does the first step: sign in, pick the tables that hold your trips, and copy their structure (columns, types, links, choice values; no row data) so the importer can be matched to your tables. The import itself comes next.
+Right now the panel does the first step: sign in, filter the table list by name (for example, tables starting with `PackList`; the filter is remembered), select the tables that hold your trips, and copy their structure (columns, types, links, choice values; no row data) so the importer can be matched to your tables. The import itself comes next.
 
 **One-time setup in Microsoft Entra ID** (a tenant admin does this once):
 

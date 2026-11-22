@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeTables, dvGet, listTables, looksRelevant, summaryText } from './api';
+import { describeTables, dvGet, listTables, matchesPrefix, summaryText } from './api';
 import { checkConfig } from './config';
 
 const cfg = { envUrl: 'https://org81670796.crm.dynamics.com/', clientId: '11111111-2222-3333-4444-555555555555', tenantId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' };
@@ -33,7 +33,7 @@ describe('dataverse api', () => {
     await expect(dvGet(cfg, 'missing', fakeDataverse({}))).rejects.toThrow(/404/);
   });
 
-  it('lists custom tables only and pre-selects the trip-looking ones', async () => {
+  it('lists custom tables only (no system or link tables)', async () => {
     const seen: string[] = [];
     const deps = fakeDataverse(
       {
@@ -52,7 +52,6 @@ describe('dataverse api', () => {
     const tables = await listTables(cfg, deps);
     expect(seen[0]).toMatch(/^https:\/\/org81670796\.crm\.dynamics\.com\/api\/data\/v9\.2\/EntityDefinitions/); // trailing slash trimmed
     expect(tables.map((t) => t.logicalName)).toEqual(['cr1_activity', 'cr1_invoice', 'cr1_trip']);
-    expect(tables.filter(looksRelevant).map((t) => t.logicalName)).toEqual(['cr1_activity', 'cr1_trip']);
   });
 
   it('describes columns, lookups, choices and many-to-many links without row data', async () => {
@@ -110,4 +109,24 @@ describe('sign-in errors', async () => {
     [new Error('AADSTS65001: The user or administrator has not consented'), /admin consent/],
     [new Error('AADSTS700016: Application not found'), /Application \(client\) ID/],
   ])('%#', (err, re) => expect(friendlyAuthError(err)).toMatch(re));
+});
+
+describe('table name filter', () => {
+  const t = (displayName: string, logicalName: string) => ({ displayName, logicalName, entitySet: 'x', isCustom: true });
+  const tables = [
+    t('PackList Trip', 'cr8a2_packlisttrip'),
+    t('PackList Activity Item', 'cr8a2_packlistactivityitem'),
+    t('Packing Slip', 'msdyn_packingslip'),
+    t('Trip Event', 'msdyn_tripevent'),
+    t('Activity Item', 'cr8a2_packlist_activityitem_legacy'),
+  ];
+  it('matches the start of the display name or table name, ignoring case, spaces and publisher prefix', () => {
+    const names = (f: string) => tables.filter((x) => matchesPrefix(x, f)).map((x) => x.displayName);
+    expect(names('PackList')).toEqual(['PackList Trip', 'PackList Activity Item', 'Activity Item']);
+    expect(names('pack list')).toEqual(['PackList Trip', 'PackList Activity Item', 'Activity Item']);
+    expect(names('cr8a2_packlisttrip')).toEqual(['PackList Trip']);
+    expect(names('Pack')).toHaveLength(4);
+    expect(names('')).toHaveLength(5);
+    expect(names('Trip')).toEqual(['Trip Event']); // starts-with, not contains
+  });
 });

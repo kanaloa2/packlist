@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AccountInfo } from '@azure/msal-browser';
 import { checkConfig, loadConfig, saveConfig, type DataverseConfig } from './config';
 import { currentAccount, friendlyAuthError, signIn, signOut } from './auth';
-import { describeTables, listTables, looksRelevant, summaryText, type TableInfo } from './api';
+import { describeTables, listTables, matchesPrefix, summaryText, type TableInfo } from './api';
 
 /**
  * Settings → Dataverse. Step 1 of the Dataverse import: connect, pick the tables that hold
@@ -14,7 +14,11 @@ export function DataversePanel() {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [tables, setTables] = useState<TableInfo[] | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
-  const [showAll, setShowAll] = useState(false);
+  const [filter, setFilterState] = useState(() => readFilter());
+  const setFilter = (f: string) => {
+    setFilterState(f);
+    writeFilter(f);
+  };
   const [summary, setSummary] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -51,7 +55,8 @@ export function DataversePanel() {
     const list = await run('Loading your tables…', () => listTables(config));
     if (list) {
       setTables(list);
-      setChosen(new Set(list.filter(looksRelevant).map((t) => t.logicalName)));
+      // Nothing is pre-ticked unless a filter is already set, then its matches are.
+      setChosen(new Set(filter.trim() ? list.filter((t) => matchesPrefix(t, filter)).map((t) => t.logicalName) : []));
     }
   }
 
@@ -79,7 +84,11 @@ export function DataversePanel() {
     }
   }
 
-  const visible = (tables ?? []).filter((t) => showAll || looksRelevant(t) || chosen.has(t.logicalName));
+  const matching = (tables ?? []).filter((t) => matchesPrefix(t, filter));
+  // Ticked tables stay visible even if they don't match the filter, so nothing is selected out of sight.
+  const visible = [...matching, ...(tables ?? []).filter((t) => chosen.has(t.logicalName) && !matchesPrefix(t, filter))];
+  const LIMIT = 150;
+  const shown = visible.slice(0, LIMIT);
 
   return (
     <section className="panel">
@@ -198,13 +207,45 @@ export function DataversePanel() {
 
       {tables && !summary && (
         <div className="dv-tables">
-          <p className="small">
-            {tables.length
-              ? 'Tick the tables that hold your trips, destinations, places, activities and items (and any table linking items to activities):'
-              : 'No custom tables found in this environment.'}
-          </p>
+          {tables.length === 0 ? (
+            <p className="small">No custom tables found in this environment.</p>
+          ) : (
+            <>
+              <p className="small">
+                Choose the tables that hold your trips, destinations, places, activities and items (and any table linking
+                items to activities).
+              </p>
+              <div className="field dv-filter">
+                <label className="label" htmlFor="dv-filter">
+                  Table name starts with
+                </label>
+                <input
+                  id="dv-filter"
+                  type="search"
+                  placeholder="e.g. PackList"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                />
+              </div>
+              <div className="dv-select-bar">
+                <span className="muted small">
+                  {matching.length} of {tables.length} tables match · {chosen.size} selected
+                </span>
+                <button
+                  className="btn btn-small btn-secondary"
+                  disabled={!matching.length || (filter.trim() === '' && matching.length > LIMIT)}
+                  onClick={() => setChosen(new Set([...chosen, ...matching.map((t) => t.logicalName)]))}
+                >
+                  Select all {matching.length} shown
+                </button>
+                <button className="btn btn-small btn-ghost" disabled={!chosen.size} onClick={() => setChosen(new Set())}>
+                  Clear
+                </button>
+              </div>
+            </>
+          )}
           <ul className="dv-table-list">
-            {visible.map((t) => (
+            {shown.map((t) => (
               <li key={t.logicalName}>
                 <label className="toggle">
                   <input
@@ -222,10 +263,10 @@ export function DataversePanel() {
               </li>
             ))}
           </ul>
-          {tables.length > visible.length && (
-            <button className="link-btn small" onClick={() => setShowAll(true)}>
-              Show all {tables.length} custom tables
-            </button>
+          {visible.length > shown.length && (
+            <p className="muted small">
+              Showing the first {LIMIT} of {visible.length}. Type the start of your table names above to narrow the list.
+            </p>
           )}
           <div className="row-actions">
             <button className="btn btn-primary" disabled={!chosen.size || !!busy} onClick={describe}>
@@ -254,4 +295,22 @@ export function DataversePanel() {
       )}
     </section>
   );
+}
+
+const FILTER_KEY = 'packlist.dataverse.filter';
+
+function readFilter(): string {
+  try {
+    return localStorage.getItem(FILTER_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeFilter(f: string) {
+  try {
+    localStorage.setItem(FILTER_KEY, f);
+  } catch {
+    /* storage unavailable */
+  }
 }

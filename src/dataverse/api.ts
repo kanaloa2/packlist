@@ -61,9 +61,18 @@ export async function listTables(c: DataverseConfig, deps?: Parameters<typeof dv
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-/** Tables whose names look like they hold trips, destinations, places, activities or items. */
-export function looksRelevant(t: TableInfo): boolean {
-  return /trip|destination|place|venue|location|activit|event|item|pack|cloth|gear|outfit/i.test(`${t.displayName} ${t.logicalName}`);
+/**
+ * True if the table's name starts with `prefix` (case and spaces ignored). Checks the display
+ * name ("PackList Trip"), the logical name, and the logical name without its publisher prefix
+ * ("cr123_packlisttrip" → "packlisttrip"). An empty prefix matches everything.
+ */
+export function matchesPrefix(t: TableInfo, prefix: string): boolean {
+  const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+  const p = squash(prefix);
+  if (!p) return true;
+  const logical = t.logicalName.toLowerCase();
+  const unprefixed = logical.includes('_') ? logical.slice(logical.indexOf('_') + 1) : logical;
+  return squash(t.displayName).startsWith(p) || logical.startsWith(p) || unprefixed.startsWith(p);
 }
 
 export interface ColumnSummary {

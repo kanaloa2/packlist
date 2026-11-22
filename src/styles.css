@@ -1528,3 +1528,21 @@ input[type='password'] {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
 }
+.dv-filter {
+  margin: 0.75rem 0 0.5rem;
+}
+.dv-select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dv-select-bar .muted {
+  margin-right: auto;
+}
+.toggle input {
+  flex-shrink: 0;
+}
+.dv-table-list .toggle {
+  align-items: flex-start;
+}
